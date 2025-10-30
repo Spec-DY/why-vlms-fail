@@ -1,0 +1,10 @@
+setup.py
+src/__init__.py
+src/board_generator.py
+src/data_structures.py
+src/model_client.py
+vlm_rule_following_test.egg-info/PKG-INFO
+vlm_rule_following_test.egg-info/SOURCES.txt
+vlm_rule_following_test.egg-info/dependency_links.txt
+vlm_rule_following_test.egg-info/requires.txt
+vlm_rule_following_test.egg-info/top_level.txt

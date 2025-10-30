@@ -1,0 +1,6 @@
+chess
+Pillow
+cairosvg
+numpy
+matplotlib
+anthropic
