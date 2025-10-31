@@ -3,7 +3,7 @@ Model client interfaces for querying VLMs
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Union, List
 import base64
 import os
 from dotenv import load_dotenv
@@ -19,13 +19,13 @@ class ModelClient(ABC):
         self.model_name = model_name
 
     @abstractmethod
-    def query(self, prompt: str, image_path: str) -> str:
+    def query(self, prompt: str, image_path: Union[str, List[str]]) -> str:
         """
-        Query the model with text and image
+        Query the model with text and image(s)
 
         Args:
             prompt: Text prompt
-            image_path: Path to image file
+            image_path: Path to image file, or list of paths for multiple images
 
         Returns:
             Model response as string
@@ -108,31 +108,56 @@ class OpenAICompatibleModelClient(ModelClient):
                 "openai package is required. Install it with: pip install 'openai>=1.0.0'"
             )
 
-    def query(self, prompt: str, image_path: str) -> str:
+    def query(self, prompt: str, image_path: Union[str, List[str]]) -> str:
         """
-        Call OpenAI-compatible API with image
+        Call OpenAI-compatible API with image(s)
 
         Args:
             prompt: Text prompt
-            image_path: Path to image file
+            image_path: Path to image file, or list of paths for multiple images
 
         Returns:
             Model response
         """
-        # Read and encode image as base64
-        with open(image_path, "rb") as image_file:
-            image_data = base64.b64encode(image_file.read()).decode("utf-8")
-
-        # Determine image media type
-        if image_path.lower().endswith('.png'):
-            media_type = "image/png"
-        elif image_path.lower().endswith(('.jpg', '.jpeg')):
-            media_type = "image/jpeg"
+        # Handle both single image and multiple images
+        if isinstance(image_path, str):
+            image_paths = [image_path]
         else:
-            media_type = "image/png"  # default
+            image_paths = image_path
 
-        # Construct data URL
-        image_url = f"data:{media_type};base64,{image_data}"
+        # Build content array with images and text
+        content = []
+
+        # Add all images first
+        for img_path in image_paths:
+            # Read and encode image as base64
+            with open(img_path, "rb") as image_file:
+                image_data = base64.b64encode(
+                    image_file.read()).decode("utf-8")
+
+            # Determine image media type
+            if img_path.lower().endswith('.png'):
+                media_type = "image/png"
+            elif img_path.lower().endswith(('.jpg', '.jpeg')):
+                media_type = "image/jpeg"
+            else:
+                media_type = "image/png"  # default
+
+            # Construct data URL
+            image_url = f"data:{media_type};base64,{image_data}"
+
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": image_url
+                }
+            })
+
+        # Add text prompt at the end
+        content.append({
+            "type": "text",
+            "text": prompt
+        })
 
         try:
             # Prepare base parameters
@@ -141,18 +166,7 @@ class OpenAICompatibleModelClient(ModelClient):
                 "messages": [
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": image_url
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt
-                            }
-                        ]
+                        "content": content
                     }
                 ]
             }
@@ -222,23 +236,37 @@ class DummyModelClient(ModelClient):
         """
         self.test_cases_lookup = {}
         for case in test_cases:
-            if 'image_path' in case:
+            # For temporal tests with multiple images, use the first image path as key
+            if 'image_paths' in case and case['image_paths']:
+                key = case['image_paths'][0] if isinstance(
+                    case['image_paths'], list) else case['image_paths']
+                self.test_cases_lookup[key] = case
+            elif 'image_path' in case:
                 self.test_cases_lookup[case['image_path']] = case
 
         print(f"  Dummy model loaded {len(self.test_cases_lookup)} test cases")
 
-    def query(self, prompt: str, image_path: str) -> str:
+    def query(self, prompt: str, image_path: Union[str, List[str]]) -> str:
         """
         Return simulated answer for testing
 
-        For combined prompts (verification + test question):
-        - Verification: Pass with specified probability (using correct answer from case)
-        - Main question: Random yes/no/unknown
+        Args:
+            prompt: Text prompt
+            image_path: Path to image file, or list of paths for multiple images
+
+        Returns:
+            Simulated response
         """
         import random
 
+        # Get the first image path as lookup key
+        if isinstance(image_path, list):
+            lookup_key = image_path[0]
+        else:
+            lookup_key = image_path
+
         # Look up the case info
-        case = self.test_cases_lookup.get(image_path)
+        case = self.test_cases_lookup.get(lookup_key)
 
         # Check if this is a combined prompt (verification + test)
         if "Verification:" in prompt and "Main answer:" in prompt:
@@ -281,53 +309,10 @@ Main answer: {main_answer}"""
             return self._generate_wrong_verification()
 
         # Pass: return correct answer from case
-        squares = case.get('squares', [])
-        pieces = case.get('pieces', {})
+        verification_expected = case.get('verification_expected', '')
 
-        # Generate correct response based on verification question type
-        verification_q = case.get('verification_question', '').lower()
-
-        if "how many squares" in verification_q:
-            return "64"
-
-        elif "what square" in verification_q and len(squares) == 1:
-            # Single square question
-            return squares[0]
-
-        elif "what two squares" in verification_q or ("what squares" in verification_q and len(squares) == 2):
-            # Two squares question
-            if len(squares) >= 2:
-                return f"{squares[0]} and {squares[1]}"
-            else:
-                return self._generate_wrong_verification()
-
-        elif "what squares" in verification_q and len(squares) >= 3:
-            # Three or more squares
-            return ", ".join(squares[:-1]) + " and " + squares[-1]
-
-        elif "how many pieces" in verification_q:
-            # Piece count question
-            return str(len(pieces))
-
-        elif "what square" in verification_q and "piece" in verification_q:
-            # Piece position question
-            if pieces:
-                piece_sq = list(pieces.keys())[0]
-                return piece_sq
-            else:
-                return self._generate_wrong_verification()
-
-        elif "adjacent" in verification_q:
-            return "yes"
-
-        else:
-            # Default: return squares
-            if len(squares) == 1:
-                return squares[0]
-            elif len(squares) >= 2:
-                return f"{squares[0]} {squares[1]}"
-            else:
-                return "I see the board"
+        # Return the expected answer
+        return verification_expected
 
     def _generate_random_verification(self) -> str:
         """Generate random verification response (when case info not available)"""
@@ -355,7 +340,6 @@ Main answer: {main_answer}"""
             "I see a chess board",
             "The board looks normal",
             f"{self._generate_square_name()}",  # Wrong square
-            # Wrong squares
             f"{self._generate_square_name()} and {self._generate_square_name()}",
             "I'm not sure",
             "c3 d4",  # Random squares
@@ -363,76 +347,3 @@ Main answer: {main_answer}"""
         ]
 
         return random.choice(wrong_responses)
-
-
-class ClaudeModelClient(ModelClient):
-    """Claude model client using Anthropic API"""
-
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "claude-sonnet-4-20250514"):
-        """
-        Initialize Claude client
-
-        Args:
-            api_key: Anthropic API key (if None, reads from ANTHROPIC_API_KEY env var)
-            model_name: Claude model name
-        """
-        api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-
-        if not api_key:
-            raise ValueError(
-                "Anthropic API key not found. Please set ANTHROPIC_API_KEY environment variable "
-                "or pass api_key parameter."
-            )
-
-        super().__init__(model_name=model_name)
-        self.api_key = api_key
-
-        try:
-            import anthropic
-            self.client = anthropic.Anthropic(api_key=api_key)
-        except ImportError:
-            raise ImportError(
-                "anthropic package is required. Install it with: pip install anthropic"
-            )
-
-    def query(self, prompt: str, image_path: str) -> str:
-        """Call Claude API with image"""
-        # Read and encode image
-        with open(image_path, "rb") as image_file:
-            image_data = base64.standard_b64encode(
-                image_file.read()).decode("utf-8")
-
-        # Determine image type
-        if image_path.lower().endswith('.png'):
-            media_type = "image/png"
-        elif image_path.lower().endswith(('.jpg', '.jpeg')):
-            media_type = "image/jpeg"
-        else:
-            media_type = "image/png"
-
-        # Call API
-        message = self.client.messages.create(
-            model=self.model_name,
-            max_tokens=1024,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": image_data,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ],
-                }
-            ],
-        )
-
-        return message.content[0].text

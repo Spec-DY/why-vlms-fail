@@ -1,9 +1,9 @@
 """
-Run Spatial Test 0 with per-case verification
-Each case is verified for board recognition before testing
+Run Temporal Test 0
+Each case tests pure temporal reasoning without chess rules
 """
 
-from src.spatial.test_0_pure_ability import SpatialTest0
+from src.temporal.test_0_pure_ability import TemporalTest0
 from src.model_client import DummyModelClient, DashScopeModelClient, NovitaModelClient
 import sys
 import os
@@ -14,29 +14,27 @@ sys.path.insert(0, os.path.abspath(
 
 def main():
     """
-    Run Spatial Test 0 with per-case verification
+    Run Temporal Test 0
 
-    For each test case:
-    1. Ask verification question (e.g., "What squares are highlighted?")
-    2. Only if verified, ask the actual test question
-    3. Track both verification rate and test accuracy
+    Tests pure temporal reasoning ability:
+    - Understanding "just moved" vs "several moves later"
+    - Understanding "current state" vs "past state"
     """
 
     print("\n" + "="*60)
-    print("SPATIAL TEST 0: PURE SPATIAL REASONING")
+    print("TEMPORAL TEST 0: PURE TEMPORAL REASONING")
     print("="*60)
 
     # ===== Configuration =====
 
     N_CASES_PER_TYPE = 2      # Number of cases per test type
     SEED = 42                  # Random seed for reproducibility
-    MODEL_TYPE = "dummy"      # Options: "dummy", "dashscope", "novita"
-    DUMMY_VERIFICATION_PASS_RATE = 0.7  # For dummy model
+    MODEL_TYPE = "dashscope"       # Options: "dummy", "dashscope", "novita"
 
     # ===== Setup Test =====
 
-    test0 = SpatialTest0(
-        base_output_dir="./output/spatial_test_0",
+    test0 = TemporalTest0(
+        base_output_dir="./output/temporal_test_0",
         n_cases_per_type=N_CASES_PER_TYPE,
         seed=SEED,
         auto_timestamp=True
@@ -78,9 +76,7 @@ def main():
     print("="*60)
 
     if MODEL_TYPE == "dummy":
-        model_client = DummyModelClient(
-            verification_pass_rate=DUMMY_VERIFICATION_PASS_RATE
-        )
+        model_client = DummyModelClient()
         print("✓ Using Dummy Model (random answers)\n")
 
     elif MODEL_TYPE == "dashscope":
@@ -96,17 +92,9 @@ def main():
             raise ValueError("NOVITA_API_KEY not found")
         model_client = NovitaModelClient(api_key=api_key, stream=False)
         print(f"✓ Using Novita: {model_client.model_name}\n")
+
     else:
         raise ValueError(f"Unknown model type: {MODEL_TYPE}")
-
-    # ===== Provide test cases to Dummy Model (if using dummy) =====
-
-    if MODEL_TYPE == "dummy":
-        print(f"\n{'='*60}")
-        print("DUMMY MODEL SETUP")
-        print("="*60)
-        model_client.set_test_cases(test0.test_cases)
-        print()
 
     # ===== Run Test =====
 
@@ -117,11 +105,19 @@ def main():
     print(f"✓ Test completed!")
     print(f"\nKey Insights:")
     print(
-        f"  - Board recognition rate: {stats['verification_passed']}/{stats['total']}")
+        f"  - Board recognition rate: {stats['verification_passed']}/{stats['total']} ({stats['verification_passed']/stats['total']:.1%})")
+
     if stats['verification_passed'] > 0:
         acc = stats['test_correct_given_verified'] / \
             stats['verification_passed']
         print(f"  - Test accuracy (when recognized): {acc:.1%}")
+
+    overall_acc = stats['test_correct'] / \
+        stats['total'] if stats['total'] > 0 else 0
+    print(
+        f"  - Overall accuracy: {stats['test_correct']}/{stats['total']} ({overall_acc:.1%})")
+
+    print(f"\nTarget: > 85% (indicates good temporal reasoning ability)")
     print(f"\nAll results saved in:")
     print(f"  {test0.output_dir}/")
     print(f"  - test_0_results.json (with verification info)")
