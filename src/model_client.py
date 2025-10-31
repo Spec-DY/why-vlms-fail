@@ -236,8 +236,9 @@ class DummyModelClient(ModelClient):
         """
         self.test_cases_lookup = {}
         for case in test_cases:
-            # For temporal tests with multiple images, use the first image path as key
+            # Handle both single image_path and multiple image_paths
             if 'image_paths' in case and case['image_paths']:
+                # Use first image path as key for temporal tests
                 key = case['image_paths'][0] if isinstance(
                     case['image_paths'], list) else case['image_paths']
                 self.test_cases_lookup[key] = case
@@ -311,8 +312,50 @@ Main answer: {main_answer}"""
         # Pass: return correct answer from case
         verification_expected = case.get('verification_expected', '')
 
-        # Return the expected answer
-        return verification_expected
+        # If we have the expected answer, return it
+        if verification_expected:
+            return verification_expected
+
+        # Otherwise try to construct from case data
+        squares = case.get('squares', [])
+        pieces = case.get('pieces', {})
+
+        # Generate correct response based on verification question type
+        verification_q = case.get('verification_question', '').lower()
+
+        if "how many squares" in verification_q:
+            return "64"
+
+        elif "what square" in verification_q and len(squares) == 1:
+            # Single square question
+            return squares[0]
+
+        elif "what two squares" in verification_q or ("what squares" in verification_q and len(squares) == 2):
+            # Two squares question
+            if len(squares) >= 2:
+                return f"{squares[0]} and {squares[1]}"
+            else:
+                return self._generate_wrong_verification()
+
+        elif "what squares" in verification_q and len(squares) >= 3:
+            # Three or more squares
+            return ", ".join(squares[:-1]) + " and " + squares[-1]
+
+        elif "how many pieces" in verification_q:
+            # Piece count question
+            return str(len(pieces))
+
+        elif "what square" in verification_q and "piece" in verification_q:
+            # Piece position question
+            if pieces:
+                piece_sq = list(pieces.keys())[0]
+                return piece_sq
+            else:
+                return self._generate_wrong_verification()
+
+        else:
+            # Default: return verification_expected if available
+            return verification_expected if verification_expected else "I see the board"
 
     def _generate_random_verification(self) -> str:
         """Generate random verification response (when case info not available)"""
