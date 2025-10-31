@@ -7,7 +7,7 @@ With per-case board recognition verification
 import os
 from typing import List, Dict, Tuple
 from datetime import datetime
-from ..data_structures import TestResult, save_results
+from ..data_structures import TestResult, save_results, create_summary
 from ..board_generator import ChessBoardGenerator
 from .test_0_generator import SpatialTest0Generator
 from .verification_generator import VerificationQuestionGenerator
@@ -215,7 +215,8 @@ Main answer: [yes/no/unknown for the main question]"""
 
         if save_results_flag:
             output_file = os.path.join(self.output_dir, "test_0_results.json")
-            save_results(results, output_file)
+            summary = create_summary(results, stats, self.test_cases)
+            save_results(results, output_file, summary=summary)
 
         return results, stats
 
