@@ -565,6 +565,513 @@ class SpatialTest1Generator:
         all_cases.extend(pawn_cases)
         print(f"  Generated {len(pawn_cases)} pawn test cases")
 
+        # ============ Castling through and in check Tests =============
+
+        print(f"Generating Castling Through Check tests...")
+        castling_through_cases = self.generate_castling_through_check_tests(
+            n_per_type=n_per_type)
+        all_cases.extend(castling_through_cases)
+        print(
+            f"  Generated {len(castling_through_cases)} castling through check test cases")
+
+        print(f"Generating Castling In Check tests...")
+        castling_in_cases = self.generate_castling_in_check_tests(
+            n_per_type=n_per_type)
+        all_cases.extend(castling_in_cases)
+        print(
+            f"  Generated {len(castling_in_cases)} castling in check test cases")
+
         print(f"\n✓ Total generated: {len(all_cases)} test cases")
 
         return all_cases
+
+    # ===== Castling in check and through check tests =====
+
+    # ============= Helper Methods for Castling =============
+
+    def _can_piece_attack_square(self, piece_type: str, from_sq: str, to_sq: str, all_pieces: Dict[str, str]) -> bool:
+        """
+        Check if a piece at from_sq can attack to_sq
+
+        Args:
+            piece_type: 'K', 'Q', 'R', 'B', 'N', 'P' (or lowercase for black)
+            from_sq: Square where piece is located
+            to_sq: Target square to check if it can be attacked
+            all_pieces: All pieces on board (for blocking check)
+
+        Returns:
+            True if piece can attack the square
+        """
+        piece_upper = piece_type.upper()
+
+        if piece_upper == 'K':
+            # King attacks adjacent squares
+            f1, r1 = self._square_to_coords(from_sq)
+            f2, r2 = self._square_to_coords(to_sq)
+            return abs(f2 - f1) <= 1 and abs(r2 - r1) <= 1 and from_sq != to_sq
+
+        elif piece_upper == 'Q':
+            # Queen attacks like rook + bishop
+            if self._is_on_straight_line(from_sq, to_sq):
+                between = self._get_squares_between(from_sq, to_sq)
+                return all(sq not in all_pieces for sq in between)
+            elif self._is_on_diagonal(from_sq, to_sq):
+                between = self._get_squares_between(from_sq, to_sq)
+                return all(sq not in all_pieces for sq in between)
+            return False
+
+        elif piece_upper == 'R':
+            # Rook attacks straight lines
+            if self._is_on_straight_line(from_sq, to_sq):
+                between = self._get_squares_between(from_sq, to_sq)
+                return all(sq not in all_pieces for sq in between)
+            return False
+
+        elif piece_upper == 'B':
+            # Bishop attacks diagonals
+            if self._is_on_diagonal(from_sq, to_sq):
+                between = self._get_squares_between(from_sq, to_sq)
+                return all(sq not in all_pieces for sq in between)
+            return False
+
+        elif piece_upper == 'N':
+            # Knight attacks L-shape (jumps, no blocking)
+            return self._is_valid_knight_move(from_sq, to_sq)
+
+        elif piece_upper == 'P':
+            # Pawn attacks diagonal forward (one square)
+            f1, r1 = self._square_to_coords(from_sq)
+            f2, r2 = self._square_to_coords(to_sq)
+
+            # White pawn (uppercase) attacks diagonally upward
+            if piece_type.isupper():
+                return abs(f2 - f1) == 1 and r2 == r1 + 1
+            # Black pawn (lowercase) attacks diagonally downward
+            else:
+                return abs(f2 - f1) == 1 and r2 == r1 - 1
+
+        return False
+
+    def _is_square_under_attack(self, square: str, by_color: str, all_pieces: Dict[str, str]) -> bool:
+        """
+        Check if a square is under attack by pieces of a given color
+
+        Args:
+            square: Square to check
+            by_color: 'white' or 'black' - color of attacking pieces
+            all_pieces: Dictionary of all pieces on board {square: piece_symbol}
+
+        Returns:
+            True if square is under attack
+        """
+        for piece_sq, piece_symbol in all_pieces.items():
+            # Check if piece is of the attacking color
+            is_white = piece_symbol.isupper()
+            piece_color = 'white' if is_white else 'black'
+
+            if piece_color == by_color:
+                if self._can_piece_attack_square(piece_symbol, piece_sq, square, all_pieces):
+                    return True
+
+        return False
+    # ============= Castling Tests =============
+
+    def generate_castling_through_check_tests(self, n_per_type: int = 10) -> List[Dict]:
+        """
+        Generate castling through check tests
+
+        Test whether the model understands that:
+        - King cannot castle THROUGH a square that is under attack
+        - Even if the king's starting and ending positions are safe
+
+        Args:
+            n_per_type: Number of cases (split between positive and negative)
+        """
+        cases = []
+        n_pos = n_per_type // 2
+        n_neg = n_per_type - n_pos
+
+        # Positive cases: Can castle (king not in check, path is not under attack, destination safe)
+        pos_count = 0
+        attempts = 0
+        while pos_count < n_pos and attempts < 500:
+            attempts += 1
+
+            # Randomly choose white or black, kingside or queenside
+            is_white = random.choice([True, False])
+            is_kingside = random.choice([True, False])
+
+            if is_white:
+                king_sq = 'e1'
+                if is_kingside:
+                    rook_sq = 'h1'
+                    # King passes through f1, ends at g1
+                    path_squares = ['f1', 'g1']
+                    target_sq = 'g1'
+                    castle_type = 'kingside'
+                else:
+                    rook_sq = 'a1'
+                    # King passes through d1, ends at c1
+                    path_squares = ['d1', 'c1']
+                    target_sq = 'c1'
+                    castle_type = 'queenside'
+                king_piece = 'K'
+                rook_piece = 'R'
+                opponent_color = 'black'
+                opponent_piece = random.choice(['q', 'r', 'b', 'n'])
+            else:
+                king_sq = 'e8'
+                if is_kingside:
+                    rook_sq = 'h8'
+                    path_squares = ['f8', 'g8']
+                    target_sq = 'g8'
+                    castle_type = 'kingside'
+                else:
+                    rook_sq = 'a8'
+                    path_squares = ['d8', 'c8']
+                    target_sq = 'c8'
+                    castle_type = 'queenside'
+                king_piece = 'k'
+                rook_piece = 'r'
+                opponent_color = 'white'
+                opponent_piece = random.choice(['Q', 'R', 'B', 'N'])
+
+            # Place opponent piece that doesn't attack king, path, or destination
+            pieces = {king_sq: king_piece, rook_sq: rook_piece}
+
+            # Try to place opponent piece randomly
+            opponent_sq = self._random_square()
+            # Avoid placing on important squares
+            avoid_squares = [king_sq, rook_sq] + path_squares
+
+            if opponent_sq not in avoid_squares:
+                pieces[opponent_sq] = opponent_piece
+
+                # Check ALL castling requirements:
+                # 1. King is NOT currently in check
+                # 2. Path squares are NOT under attack
+                # 3. Destination is NOT under attack
+                all_safe = True
+
+                # Check king's current position
+                if self._is_square_under_attack(king_sq, opponent_color, pieces):
+                    all_safe = False
+
+                # Check path and destination
+                if all_safe:
+                    for sq in path_squares:
+                        if self._is_square_under_attack(sq, opponent_color, pieces):
+                            all_safe = False
+                            break
+
+                if all_safe:
+                    cases.append({
+                        'case_id': f'castling_through_pos_{pos_count+1}',
+                        'type': 'castling',
+                        'subtype': 'through_check_safe',
+                        'pieces': pieces,
+                        'squares': [target_sq],
+                        'question': f'Can the {"white" if is_white else "black"} king castle {castle_type}?',
+                        'expected': 'yes',
+                        'reasoning': f'King is not in check and castling path is safe'
+                    })
+                    pos_count += 1
+
+        # Negative cases: Cannot castle (path IS under attack)
+        neg_count = 0
+        attempts = 0
+        while neg_count < n_neg and attempts < 500:
+            attempts += 1
+
+            is_white = random.choice([True, False])
+            is_kingside = random.choice([True, False])
+
+            if is_white:
+                king_sq = 'e1'
+                if is_kingside:
+                    rook_sq = 'h1'
+                    path_squares = ['f1', 'g1']
+                    target_sq = 'g1'
+                    castle_type = 'kingside'
+                else:
+                    rook_sq = 'a1'
+                    path_squares = ['d1', 'c1']
+                    target_sq = 'c1'
+                    castle_type = 'queenside'
+                king_piece = 'K'
+                rook_piece = 'R'
+                opponent_color = 'black'
+            else:
+                king_sq = 'e8'
+                if is_kingside:
+                    rook_sq = 'h8'
+                    path_squares = ['f8', 'g8']
+                    target_sq = 'g8'
+                    castle_type = 'kingside'
+                else:
+                    rook_sq = 'a8'
+                    path_squares = ['d8', 'c8']
+                    target_sq = 'c8'
+                    castle_type = 'queenside'
+                king_piece = 'k'
+                rook_piece = 'r'
+                opponent_color = 'white'
+
+            pieces = {king_sq: king_piece, rook_sq: rook_piece}
+
+            # Choose which square in path to attack
+            attacked_square = random.choice(path_squares)
+
+            # Place attacking piece based on type
+            piece_type = random.choice(['rook', 'bishop', 'queen', 'knight'])
+
+            if piece_type == 'rook':
+                # Place rook on same rank or file as attacked square
+                opponent_piece = 'r' if opponent_color == 'black' else 'R'
+                if random.choice([True, False]):
+                    # Same rank
+                    opponent_sq = random.choice(
+                        self.files) + attacked_square[1]
+                else:
+                    # Same file
+                    opponent_sq = attacked_square[0] + \
+                        random.choice(self.ranks)
+
+            elif piece_type == 'bishop':
+                # Place bishop on diagonal to attacked square
+                opponent_piece = 'b' if opponent_color == 'black' else 'B'
+                f, r = self._square_to_coords(attacked_square)
+                # Try diagonal positions
+                offsets = [(-2, -2), (-2, 2), (2, -2), (2, 2),
+                           (-3, -3), (-3, 3), (3, -3), (3, 3)]
+                random.shuffle(offsets)
+                opponent_sq = None
+                for df, dr in offsets:
+                    sq = self._coords_to_square(f + df, r + dr)
+                    if sq and sq not in [king_sq, rook_sq]:
+                        opponent_sq = sq
+                        break
+
+            elif piece_type == 'queen':
+                # Queen can attack from anywhere on rank/file/diagonal
+                opponent_piece = 'q' if opponent_color == 'black' else 'Q'
+                opponent_sq = random.choice(self.files) + attacked_square[1]
+
+            else:  # knight
+                # Place knight at L-shape distance
+                opponent_piece = 'n' if opponent_color == 'black' else 'N'
+                f, r = self._square_to_coords(attacked_square)
+                knight_offsets = [(-2, -1), (-2, 1), (-1, -2), (-1, 2),
+                                  (1, -2), (1, 2), (2, -1), (2, 1)]
+                random.shuffle(knight_offsets)
+                opponent_sq = None
+                for df, dr in knight_offsets:
+                    sq = self._coords_to_square(f + df, r + dr)
+                    if sq and sq not in [king_sq, rook_sq]:
+                        opponent_sq = sq
+                        break
+
+            if opponent_sq and opponent_sq not in [king_sq, rook_sq]:
+                pieces[opponent_sq] = opponent_piece
+
+                # Verify that the path IS under attack
+                if self._is_square_under_attack(attacked_square, opponent_color, pieces):
+                    cases.append({
+                        'case_id': f'castling_through_neg_{neg_count+1}',
+                        'type': 'castling',
+                        'subtype': 'through_check_blocked',
+                        'pieces': pieces,
+                        'squares': [target_sq],
+                        'question': f'Can the {"white" if is_white else "black"} king castle {castle_type}?',
+                        'expected': 'no',
+                        'reasoning': f'Cannot castle through attacked square {attacked_square}'
+                    })
+                    neg_count += 1
+
+        return cases
+
+    def generate_castling_in_check_tests(self, n_per_type: int = 10) -> List[Dict]:
+        """
+        Generate castling in check tests
+
+        Test whether the model understands that:
+        - King cannot castle when currently in check
+
+        Args:
+            n_per_type: Number of cases (split between positive and negative)
+        """
+        cases = []
+        n_pos = n_per_type // 2
+        n_neg = n_per_type - n_pos
+
+        # Positive cases: Can castle (king is NOT in check)
+        pos_count = 0
+        attempts = 0
+        while pos_count < n_pos and attempts < 500:
+            attempts += 1
+
+            is_white = random.choice([True, False])
+            is_kingside = random.choice([True, False])
+
+            if is_white:
+                king_sq = 'e1'
+                if is_kingside:
+                    rook_sq = 'h1'
+                    path_squares = ['f1', 'g1']  # Squares king passes through
+                    target_sq = 'g1'
+                    castle_type = 'kingside'
+                else:
+                    rook_sq = 'a1'
+                    path_squares = ['d1', 'c1']  # Squares king passes through
+                    target_sq = 'c1'
+                    castle_type = 'queenside'
+                king_piece = 'K'
+                rook_piece = 'R'
+                opponent_color = 'black'
+                opponent_piece = random.choice(['q', 'r', 'b', 'n'])
+            else:
+                king_sq = 'e8'
+                if is_kingside:
+                    rook_sq = 'h8'
+                    path_squares = ['f8', 'g8']
+                    target_sq = 'g8'
+                    castle_type = 'kingside'
+                else:
+                    rook_sq = 'a8'
+                    path_squares = ['d8', 'c8']
+                    target_sq = 'c8'
+                    castle_type = 'queenside'
+                king_piece = 'k'
+                rook_piece = 'r'
+                opponent_color = 'white'
+                opponent_piece = random.choice(['Q', 'R', 'B', 'N'])
+
+            pieces = {king_sq: king_piece, rook_sq: rook_piece}
+
+            # Place opponent piece that does NOT attack the king, path, or destination
+            opponent_sq = self._random_square()
+            avoid_squares = [king_sq, rook_sq] + path_squares
+
+            if opponent_sq not in avoid_squares:
+                pieces[opponent_sq] = opponent_piece
+
+                # Check ALL castling conditions:
+                # 1. King is NOT currently under attack
+                # 2. King does NOT pass through attacked squares
+                # 3. King's destination is NOT under attack
+                all_safe = True
+
+                # Check current king position
+                if self._is_square_under_attack(king_sq, opponent_color, pieces):
+                    all_safe = False
+
+                # Check all squares in castling path (including destination)
+                for sq in path_squares:
+                    if self._is_square_under_attack(sq, opponent_color, pieces):
+                        all_safe = False
+                        break
+
+                if all_safe:
+                    cases.append({
+                        'case_id': f'castling_in_check_pos_{pos_count+1}',
+                        'type': 'castling',
+                        'subtype': 'not_in_check',
+                        'pieces': pieces,
+                        'squares': [target_sq],
+                        'question': f'Can the {"white" if is_white else "black"} king castle {castle_type}?',
+                        'expected': 'yes',
+                        'reasoning': f'King is not in check and castling path is safe'
+                    })
+                    pos_count += 1
+
+        # Negative cases: Cannot castle (king IS in check)
+        neg_count = 0
+        attempts = 0
+        while neg_count < n_neg and attempts < 500:
+            attempts += 1
+
+            is_white = random.choice([True, False])
+            is_kingside = random.choice([True, False])
+
+            if is_white:
+                king_sq = 'e1'
+                rook_sq = 'h1' if is_kingside else 'a1'
+                target_sq = 'g1' if is_kingside else 'c1'
+                castle_type = 'kingside' if is_kingside else 'queenside'
+                king_piece = 'K'
+                rook_piece = 'R'
+                opponent_color = 'black'
+            else:
+                king_sq = 'e8'
+                rook_sq = 'h8' if is_kingside else 'a8'
+                target_sq = 'g8' if is_kingside else 'c8'
+                castle_type = 'kingside' if is_kingside else 'queenside'
+                king_piece = 'k'
+                rook_piece = 'r'
+                opponent_color = 'white'
+
+            pieces = {king_sq: king_piece, rook_sq: rook_piece}
+
+            # Place attacking piece based on type
+            piece_type = random.choice(['rook', 'bishop', 'queen', 'knight'])
+
+            if piece_type == 'rook':
+                opponent_piece = 'r' if opponent_color == 'black' else 'R'
+                # Place on same rank or file as king
+                if random.choice([True, False]):
+                    opponent_sq = random.choice(
+                        [f for f in self.files if f != king_sq[0]]) + king_sq[1]
+                else:
+                    opponent_sq = king_sq[0] + \
+                        random.choice(
+                            [r for r in self.ranks if r != king_sq[1]])
+
+            elif piece_type == 'bishop':
+                opponent_piece = 'b' if opponent_color == 'black' else 'B'
+                f, r = self._square_to_coords(king_sq)
+                offsets = [(-2, -2), (-2, 2), (2, -2), (2, 2),
+                           (-3, -3), (-3, 3), (3, -3), (3, 3)]
+                random.shuffle(offsets)
+                opponent_sq = None
+                for df, dr in offsets:
+                    sq = self._coords_to_square(f + df, r + dr)
+                    if sq and sq != rook_sq:
+                        opponent_sq = sq
+                        break
+
+            elif piece_type == 'queen':
+                opponent_piece = 'q' if opponent_color == 'black' else 'Q'
+                opponent_sq = random.choice(
+                    [f for f in self.files if f != king_sq[0]]) + king_sq[1]
+
+            else:  # knight
+                opponent_piece = 'n' if opponent_color == 'black' else 'N'
+                f, r = self._square_to_coords(king_sq)
+                knight_offsets = [(-2, -1), (-2, 1), (-1, -2), (-1, 2),
+                                  (1, -2), (1, 2), (2, -1), (2, 1)]
+                random.shuffle(knight_offsets)
+                opponent_sq = None
+                for df, dr in knight_offsets:
+                    sq = self._coords_to_square(f + df, r + dr)
+                    if sq and sq != rook_sq:
+                        opponent_sq = sq
+                        break
+
+            if opponent_sq and opponent_sq != rook_sq:
+                pieces[opponent_sq] = opponent_piece
+
+                # Verify that king IS under attack
+                if self._is_square_under_attack(king_sq, opponent_color, pieces):
+                    cases.append({
+                        'case_id': f'castling_in_check_neg_{neg_count+1}',
+                        'type': 'castling',
+                        'subtype': 'in_check',
+                        'pieces': pieces,
+                        'squares': [target_sq],
+                        'question': f'Can the {"white" if is_white else "black"} king castle {castle_type}?',
+                        'expected': 'no',
+                        'reasoning': f'Cannot castle while in check'
+                    })
+                    neg_count += 1
+
+        return cases
