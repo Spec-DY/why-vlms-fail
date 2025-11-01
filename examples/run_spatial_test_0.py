@@ -28,7 +28,7 @@ def main():
 
     # ===== Configuration =====
 
-    N_CASES_PER_TYPE = 2      # Number of cases per test type
+    N_CASES_PER_TYPE = 5      # Number of cases per test type
     SEED = 42                  # Random seed for reproducibility
     MODEL_TYPE = "dummy"      # Options: "dummy", "dashscope", "novita"
     DUMMY_VERIFICATION_PASS_RATE = 0.7  # For dummy model

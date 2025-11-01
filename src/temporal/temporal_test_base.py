@@ -153,7 +153,8 @@ class TemporalTestBase(ABC):
     def generate_combined_prompt(self, case: Dict) -> str:
         """
         Generate combined prompt with verification question first, then test question
-        ✅ Explicitly references which image corresponds to which state
+        Handles both yes/no questions and multiple choice questions
+        Explicitly specifies verification answer format
         """
         verification_q = case.get('verification_question', '')
         label = case.get('label', 'These are chess board states.')
@@ -162,34 +163,72 @@ class TemporalTestBase(ABC):
         # Count the number of states
         num_states = len(case.get('states', []))
 
-        # ✅ Create explicit image-to-state mapping
+        # Create explicit image-to-state mapping
         if num_states == 2:
             image_ref = "Image 1 shows State 1. Image 2 shows State 2."
+            verification_format_example = "State 1: White Pawn at e5, Black Pawn at f7; State 2: White Pawn at e5, Black Pawn at f5"
         elif num_states == 3:
             image_ref = "Image 1 shows State 1. Image 2 shows State 2. Image 3 shows State 3."
+            verification_format_example = "State 1: White Pawn at e5; State 2: Black Pawn at f5; State 3: White Pawn at f6"
         elif num_states == 4:
             image_ref = "Image 1 shows State 1. Image 2 shows State 2. Image 3 shows State 3. Image 4 shows State 4."
+            verification_format_example = "State 1: King at e1, Rook at h1; State 2: King at f1, Rook at h1; State 3: King at g1, Rook at h1; State 4: King at g1, Rook at f1"
         else:
-            # Generic fallback for other cases
             image_refs = [
                 f"Image {i+1} shows State {i+1}" for i in range(num_states)]
             image_ref = ". ".join(image_refs) + "."
+            verification_format_example = "State 1: [pieces]; State 2: [pieces]; ..."
 
-        prompt = f"""Look at these chess board states carefully.
+        # Check if this is a multiple choice question
+        if 'options' in case:
+            options = case['options']
+            options_text = "\n".join([f"{k}) {v}" for k, v in options.items()])
 
-{image_ref}
+            prompt = f"""Look at these chess board states carefully.
 
-{label}
+    {image_ref}
 
-First, a simple verification question to make sure you see the states correctly:
-{verification_q}
+    {label}
 
-Now, the main question:
-{test_q}
+    First, a simple verification question to make sure you see the states correctly:
+    {verification_q}
 
-Please answer both questions. Format your response as:
-Verification: [your answer to verification question]
-Main answer: [yes/no/unknown for the main question]"""
+    For the verification answer, use this exact format:
+    - For each state, list all pieces as: [Color] [Piece Type] at [square]
+    - Separate states with semicolons
+    - Example: {verification_format_example}
+
+    Now, the main question:
+    {test_q}
+
+    Options:
+    {options_text}
+
+    Please answer both questions. Format your response exactly as:
+    Verification: [your answer using the format above]
+    Main answer: [A/B/C/D]"""
+        else:
+            # Regular yes/no question
+            prompt = f"""Look at these chess board states carefully.
+
+    {image_ref}
+
+    {label}
+
+    First, a simple verification question to make sure you see the states correctly:
+    {verification_q}
+
+    For the verification answer, use this exact format:
+    - For each state, list all pieces as: [Color] [Piece Type] at [square]
+    - Separate states with semicolons
+    - Example: {verification_format_example}
+
+    Now, the main question:
+    {test_q}
+
+    Please answer both questions. Format your response exactly as:
+    Verification: [your answer using the format above]
+    Main answer: [yes/no/unknown]"""
 
         return prompt
 
@@ -432,3 +471,34 @@ Main answer: [yes/no/unknown for the main question]"""
                     sub_stats['total'] if sub_stats['total'] > 0 else 0
                 print(
                     f"    └─ {subtype:23s}: {sub_acc:5.1%} ({sub_stats['correct']:2d}/{sub_stats['total']:2d})")
+
+    def _extract_answer(self, response: str) -> str:
+        """
+        Extract answer from model response
+        Handles both yes/no/unknown and A/B/C/D formats
+        """
+        response_lower = response.lower().strip()
+
+        # Check for multiple choice answers first
+        if response_lower.startswith(('a)', 'a.', 'a ', 'a:')):
+            return "A"
+        elif response_lower.startswith(('b)', 'b.', 'b ', 'b:')):
+            return "B"
+        elif response_lower.startswith(('c)', 'c.', 'c ', 'c:')):
+            return "C"
+        elif response_lower.startswith(('d)', 'd.', 'd ', 'd:')):
+            return "D"
+
+        # Check for single letter answers
+        first_word = response_lower.split(
+        )[0] if response_lower.split() else ""
+        if first_word in ['a', 'b', 'c', 'd']:
+            return first_word.upper()
+
+        # Check for yes/no/unknown
+        if "yes" in response_lower[:20]:
+            return "yes"
+        elif "no" in response_lower[:20]:
+            return "no"
+        else:
+            return "unknown"

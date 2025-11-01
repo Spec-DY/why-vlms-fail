@@ -1,12 +1,12 @@
 """
-Run Spatial Test 1 with per-case verification
-Each case is verified for board recognition before testing
+Run Temporal Test 1
+Tests temporal rule following ability (En Passant & Castling)
 """
 
-from src.spatial.test_1_rule_following import SpatialTest1
+from src.temporal.test_1_rule_following import TemporalTest1
 from src.model_client import DummyModelClient, DashScopeModelClient, NovitaModelClient
-import os
 import sys
+import os
 
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..')))
@@ -14,30 +14,29 @@ sys.path.insert(0, os.path.abspath(
 
 def main():
     """
-    Run Spatial Test 1 with per-case verification
+    Run Temporal Test 1
 
-    For each test case:
-    1. Ask verification question (e.g., "What pieces are on the board?")
-    2. Only if verified, ask the actual test question
-    3. Track both verification rate and test accuracy
+    Tests temporal rule following ability:
+    - En Passant rule application
+    - Castling rule application
+    - Event recognition (what happened?)
+    - Direct movement validation
     """
 
     print("\n" + "="*60)
-    print("SPATIAL TEST 1: RULE FOLLOWING BASELINE")
+    print("TEMPORAL TEST 1: RULE FOLLOWING BASELINE")
     print("="*60)
 
     # ===== Configuration =====
 
-    # Number of cases per piece type (total = 6 * N_CASES_PER_TYPE)
-    N_CASES_PER_TYPE = 5
-    SEED = 42                  # Random seed for reproducibility
-    MODEL_TYPE = "dummy"      # Options: "dummy", "dashscope", "novita"
-    DUMMY_VERIFICATION_PASS_RATE = 0.8  # For dummy model
+    N_CASES_PER_TYPE = 10      # Number of cases per test type
+    SEED = 42                   # Random seed for reproducibility
+    MODEL_TYPE = "dashscope"        # Options: "dummy", "dashscope", "novita"
 
     # ===== Setup Test =====
 
-    test1 = SpatialTest1(
-        base_output_dir="./output/spatial_test_1",
+    test1 = TemporalTest1(
+        base_output_dir="./output/temporal_test_1",
         n_cases_per_type=N_CASES_PER_TYPE,
         seed=SEED,
         auto_timestamp=True
@@ -45,8 +44,8 @@ def main():
 
     print(f"\nOutput directory: {test1.output_dir}")
     print(f"Configuration:")
-    print(f"  - Cases per piece type: {N_CASES_PER_TYPE}")
-    print(f"  - Total cases: {N_CASES_PER_TYPE * 6} (6 piece types)")
+    print(f"  - Cases per type: {N_CASES_PER_TYPE}")
+    print(f"  - Total cases: ~{N_CASES_PER_TYPE * 5}")
     print(f"  - Random seed: {SEED}")
     print(f"  - Model: {MODEL_TYPE}")
 
@@ -57,16 +56,15 @@ def main():
     print("  (Each with verification question + test question)")
 
     # Show distribution
-    piece_counts = {}
+    type_counts = {}
     for case in cases:
-        piece_type = case.get('type', 'unknown')
-        piece_counts[piece_type] = piece_counts.get(piece_type, 0) + 1
+        case_type = case.get('type', 'unknown')
+        type_counts[case_type] = type_counts.get(case_type, 0) + 1
 
-    print("\nTest case distribution by piece type:")
-    for piece_type in ['king', 'queen', 'rook', 'bishop', 'knight', 'pawn']:
-        if piece_type in piece_counts:
-            count = piece_counts[piece_type]
-            print(f"  {piece_type.capitalize():10s}: {count:3d} cases")
+    print("\nTest case distribution:")
+    for case_type in sorted(type_counts.keys()):
+        count = type_counts[case_type]
+        print(f"  {case_type:25s}: {count:3d} cases")
 
     # ===== Create Test Images =====
 
@@ -79,9 +77,7 @@ def main():
     print("="*60)
 
     if MODEL_TYPE == "dummy":
-        model_client = DummyModelClient(
-            verification_pass_rate=DUMMY_VERIFICATION_PASS_RATE
-        )
+        model_client = DummyModelClient()
         print("✓ Using Dummy Model (random answers)\n")
 
     elif MODEL_TYPE == "dashscope":
@@ -97,6 +93,7 @@ def main():
             raise ValueError("NOVITA_API_KEY not found")
         model_client = NovitaModelClient(api_key=api_key, stream=False)
         print(f"✓ Using Novita: {model_client.model_name}\n")
+
     else:
         raise ValueError(f"Unknown model type: {MODEL_TYPE}")
 
@@ -120,16 +117,17 @@ def main():
     print(f"  - Total test cases: {stats['total']}")
     print(
         f"  - Board recognition rate: {stats['verification_passed']}/{stats['total']} ({stats['verification_passed']/stats['total']:.1%})")
+
     if stats['verification_passed'] > 0:
         acc = stats['test_correct_given_verified'] / \
             stats['verification_passed']
         print(f"  - Test accuracy (when recognized): {acc:.1%}")
         print(
-            f"  - Overall accuracy (including failures): {stats['test_correct']}/{stats['total']} ({stats['test_correct']/stats['total']:.1%})")
+            f"  - Overall accuracy: {stats['test_correct']}/{stats['total']} ({stats['test_correct']/stats['total']:.1%})")
+
     print(f"\nAll results saved in:")
     print(f"  {test1.output_dir}/")
     print(f"  - test_1_results.json (with verification info)")
-    print(f"  - {len(cases)} test images (.png)")
 
     print(f"\n{'='*60}\n")
 

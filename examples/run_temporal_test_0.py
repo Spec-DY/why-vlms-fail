@@ -29,7 +29,7 @@ def main():
 
     N_CASES_PER_TYPE = 2      # Number of cases per test type
     SEED = 42                  # Random seed for reproducibility
-    MODEL_TYPE = "dashscope"       # Options: "dummy", "dashscope", "novita"
+    MODEL_TYPE = "dummy"       # Options: "dummy", "dashscope", "novita"
 
     # ===== Setup Test =====
 
