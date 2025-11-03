@@ -28,10 +28,12 @@ def main():
 
     # ===== Configuration =====
 
-    N_CASES_PER_TYPE = 5      # Number of cases per test type
-    SEED = 42                  # Random seed for reproducibility
-    MODEL_TYPE = "dummy"      # Options: "dummy", "dashscope", "novita"
+    N_CASES_PER_TYPE = 18      # Number of cases per test type
+    SEED = 57                 # Random seed for reproducibility
+    MODEL_TYPE = "dashscope"      # Options: "dummy", "dashscope", "novita"
     DUMMY_VERIFICATION_PASS_RATE = 0.7  # For dummy model
+    RATE_LIMIT_REQUESTS = 60   # Number of requests before pausing
+    RATE_LIMIT_PAUSE = 10      # Pause duration in seconds
 
     # ===== Setup Test =====
 
@@ -39,7 +41,9 @@ def main():
         base_output_dir="./output/spatial_test_0",
         n_cases_per_type=N_CASES_PER_TYPE,
         seed=SEED,
-        auto_timestamp=True
+        auto_timestamp=True,
+        rate_limit_requests=RATE_LIMIT_REQUESTS,
+        rate_limit_pause=RATE_LIMIT_PAUSE
     )
 
     print(f"\nOutput directory: {test0.output_dir}")
@@ -106,7 +110,7 @@ def main():
         print("DUMMY MODEL SETUP")
         print("="*60)
         model_client.set_test_cases(test0.test_cases)
-        print()
+        print("✓ Test cases provided to Dummy Model")
 
     # ===== Run Test =====
 

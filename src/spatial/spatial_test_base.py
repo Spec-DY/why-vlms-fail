@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from ..data_structures import TestResult, save_results, create_summary
 from ..board_generator import ChessBoardGenerator
 from .verification_generator import VerificationQuestionGenerator
+import time
 
 
 class SpatialTestBase(ABC):
@@ -20,7 +21,9 @@ class SpatialTestBase(ABC):
                  base_output_dir: str,
                  n_cases_per_type: int = 10,
                  seed: int = 42,
-                 auto_timestamp: bool = True):
+                 auto_timestamp: bool = True,
+                 rate_limit_requests: int = 0,
+                 rate_limit_pause: int = 0):
         """
         Initialize Spatial Test Base
 
@@ -32,6 +35,9 @@ class SpatialTestBase(ABC):
             auto_timestamp: If True, append timestamp to output directory
         """
         self.test_layer = test_layer
+
+        self.rate_limit_requests = rate_limit_requests
+        self.rate_limit_pause = rate_limit_pause
 
         if auto_timestamp:
             timestamp = datetime.now().strftime("%m%d_%H%M%S")
@@ -179,6 +185,13 @@ Main answer: [yes/no/unknown for the main question]"""
                     print(
                         f"    Expected: {case.get('verification_expected', 'N/A')}")
                     print(f"    Got: {verification_response[:50]}...")
+
+                # Handle rate limiting
+                if self.rate_limit_requests > 0 and i % self.rate_limit_requests == 0 and i < len(self.test_cases):
+                    print(
+                        f"\n  ⏸️  Rate limit: Processed {i} requests, pausing for {self.rate_limit_pause} seconds...")
+                    time.sleep(self.rate_limit_pause)
+                    print(f"  ▶️  Resuming...\n")
 
             except Exception as e:
                 print(f"  ✗ Error: {e}")

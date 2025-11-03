@@ -16,7 +16,9 @@ class SpatialTest0(SpatialTestBase):
                  base_output_dir: str = "./output/spatial_test_0",
                  n_cases_per_type: int = 10,
                  seed: int = 42,
-                 auto_timestamp: bool = True):
+                 auto_timestamp: bool = True,
+                 rate_limit_requests: int = 0,
+                 rate_limit_pause: int = 0):
         """
         Initialize Spatial Test 0
 
@@ -31,7 +33,9 @@ class SpatialTest0(SpatialTestBase):
             base_output_dir=base_output_dir,
             n_cases_per_type=n_cases_per_type,
             seed=seed,
-            auto_timestamp=auto_timestamp
+            auto_timestamp=auto_timestamp,
+            rate_limit_requests=rate_limit_requests,
+            rate_limit_pause=rate_limit_pause
         )
 
     def generate_test_cases(self) -> List[Dict]:

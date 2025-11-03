@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from ..data_structures import TestResult, save_results, create_summary
 from ..board_generator import ChessBoardGenerator
 from .verification_generator import TemporalVerificationGenerator
+import time
 
 
 class TemporalTestBase(ABC):
@@ -21,7 +22,9 @@ class TemporalTestBase(ABC):
                  base_output_dir: str,
                  n_cases_per_type: int = 10,
                  seed: int = 42,
-                 auto_timestamp: bool = True):
+                 auto_timestamp: bool = True,
+                 rate_limit_requests: int = 0,
+                 rate_limit_pause: int = 0):
         """
         Initialize Temporal Test Base
 
@@ -31,8 +34,13 @@ class TemporalTestBase(ABC):
             n_cases_per_type: Number of cases per test type
             seed: Random seed for reproducibility
             auto_timestamp: If True, append timestamp to output directory
+            rate_limit_requests: Number of requests before pausing (None = no limit)
+            rate_limit_pause: Seconds to pause (None = no limit)
         """
         self.test_layer = test_layer
+
+        self.rate_limit_pause = rate_limit_pause
+        self.rate_limit_requests = rate_limit_requests
 
         if auto_timestamp:
             timestamp = datetime.now().strftime("%m%d_%H%M%S")
@@ -306,6 +314,12 @@ class TemporalTestBase(ABC):
                     print(
                         f"    Expected: {case.get('verification_expected', 'N/A')}")
                     print(f"    Got: {verification_response[:50]}...")
+
+                if self.rate_limit_requests > 0 and i % self.rate_limit_requests == 0 and i < len(self.test_cases):
+                    print(
+                        f"\n  ⏸️  Rate limit: Processed {i} requests, pausing for {self.rate_limit_pause} seconds...")
+                    time.sleep(self.rate_limit_pause)
+                    print(f"  ▶️  Resuming...\n")
 
             except Exception as e:
                 print(f"  ✗ Error: {e}")
