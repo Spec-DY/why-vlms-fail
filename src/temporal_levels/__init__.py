@@ -11,6 +11,8 @@ from .level_3_en_passant_basic import TemporalLevel3
 from .level_3_generator import Level3Generator
 from .level_4_en_passant_constraint import TemporalLevel4
 from .level_4_generator import Level4Generator
+from .level_5_castling_constraints import TemporalLevel5
+from .level_5_generator import Level5Generator
 from .verification_generator import TemporalLevelVerificationGenerator
 
 __all__ = [
@@ -23,5 +25,8 @@ __all__ = [
     "Level3Generator",
     "TemporalLevel4",
     "Level4Generator",
+    "TemporalLevel5",
+    "Level5Generator",
     "TemporalLevelVerificationGenerator",
+
 ]

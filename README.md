@@ -341,3 +341,61 @@ Plus special castling tests:
 - **State Comparison**: Compare board states across frames
 - **Sequence Understanding**: Understand move sequences
 - **Rule Application**: Apply time-dependent rules (en passant timing)
+
+# Condition Ladder
+
+Here is a simple usage guide in English for running the temporal levels. You can save this as `USAGE.md`.
+
+---
+
+## How to use the `run/run_temporal_levels.py`
+
+### 1\. Run Specific Levels
+
+If you only want to test specific levels (e.g., Level 1 and Level 4):
+
+```bash
+python run/run_temporal_levels.py -l 1 4 --model xai
+```
+
+_(Note: Use `-l` followed by the level numbers separated by spaces)_
+
+### 2\. Run All Levels (Recommended)
+
+To run all available tests from Level 1 to Level 4 in one go:
+
+```bash
+python run/run_temporal_levels.py --all --model xai
+```
+
+---
+
+## ⚙️ Common Arguments
+
+| Argument                | Short | Type         | Default      | Description                                                                                              |
+| :---------------------- | :---- | :----------- | :----------- | :------------------------------------------------------------------------------------------------------- |
+| **`--levels`**          | `-l`  | `int` (list) | `None`       | Specific level numbers to run (e.g., `-l 1 2 3`). Mutually exclusive with `--all`.                       |
+| **`--all`**             |       | `flag`       | `False`      | Run all available levels (currently 1-4). Mutually exclusive with `--levels`.                            |
+| **`--model`**           | `-m`  | `str`        | `"dummy"`    | Model client to use. Options: `dummy`, `novita`, `dashscope`, `xai`.                                     |
+| **`--n-cases`**         | `-n`  | `int`        | `None`       | Number of test cases to generate per level. If not set, uses the level's default (usually 60-100).       |
+| **`--seed`**            | `-s`  | `int`        | `42`         | Random seed for reproducibility of test case generation.                                                 |
+| **`--output`**          | `-o`  | `str`        | `"./output"` | Base directory for saving output results.                                                                |
+| **`--dummy-pass-rate`** |       | `float`      | `0.8`        | **Only for `dummy` model.** Probability (0.0-1.0) that the dummy model passes the verification question. |
+| **`--rate-limit`**      |       | `int`        | `0`          | Number of requests to process before pausing. `0` means no limit.                                        |
+| **`--rate-pause`**      |       | `int`        | `0`          | Duration in seconds to pause when the rate limit is reached.                                             |
+
+---
+
+## 📂 Where are the results?
+
+After the script finishes, check the `output/` directory:
+
+1.  **Summary Report (Best for overview)**:
+
+    - File name: `output/temporal_levels_summary_YYYYMMDD_...json`
+    - Contains accuracy statistics and comparisons for all run levels.
+
+2.  **Detailed Results**:
+
+    - Each level creates its own folder, e.g., `output/temporal_level_1_.../`
+    - Contains individual case images and detailed JSON logs.
