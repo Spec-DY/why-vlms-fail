@@ -51,17 +51,6 @@ Evaluates spatial and temporal reasoning with chess rules:
 
 👉 [View detailed documentation](./rule_following/README.md)
 
-## Supported Models
-
-Both test suites support multiple VLM providers:
-
-- **Qwen-VL** (Alibaba DashScope)
-- **Gemini / Gemma** (Google)
-- **GLM-4V** (Zhipu AI)
-- **Grok** (XAI)
-- **Novita AI**
-- Custom OpenAI-compatible endpoints
-
 ## Quick Start
 
 ### Installation
