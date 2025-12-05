@@ -6,10 +6,10 @@ Diagnostic tests for understanding why VLMs fail in game scenarios.
 
 This repository contains two complementary test suites that systematically evaluate VLM capabilities:
 
-| Module | Focus | Games Used |
-|--------|-------|------------|
-| [**Perception**](./perception/README.md) | Visual perception accuracy | Gomoku, Chess, TicTacToe |
-| [**Rule Following**](./rule_following/README.md) | Spatial & temporal reasoning | Chess |
+| Module | Focus |
+|--------|-------|
+| [**Perception**](./perception/README.md) | Visual perception accuracy
+| [**Rule Following**](./rule_following/README.md) | Spatial & temporal reasoning
 
 ## Project Structure
 
