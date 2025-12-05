@@ -13,7 +13,6 @@ setup(
         "requests",
         "openai"
     ],
-    author="Dylan",
-    description="VLM Rule Following Capability Diagnostic Framework",
+    description="VLM Diagnostic Framework",
     python_requires=">=3.8",
 )

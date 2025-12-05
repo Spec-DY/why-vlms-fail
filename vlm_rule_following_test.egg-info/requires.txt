@@ -1,7 +1,0 @@
-chess
-Pillow
-numpy
-matplotlib
-python-dotenv
-requests
-openai
