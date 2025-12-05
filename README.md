@@ -40,15 +40,6 @@ Each test includes a **verification mechanism** to ensure the model can correctl
 - Includes: En Passant, Castling with temporal constraints
 - Event recognition and rule application
 
-### 🔍 Verification Mechanism
-
-Every test case includes two-step verification:
-
-1. **Board Recognition Verification**: Ensures the model correctly sees the board and pieces
-2. **Ability Testing**: Only counts toward results after passing verification
-
-This design distinguishes between "cannot see the board" and "insufficient reasoning ability" failure modes.
-
 ### 🔌 Multi-Model Support
 
 Supports any OpenAI-compatible API:
@@ -61,13 +52,6 @@ Supports any OpenAI-compatible API:
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-```bash
-# Python 3.8+
-pip install -r requirements.txt
-```
-
 ### Installation
 
 ```bash
@@ -75,10 +59,7 @@ pip install -r requirements.txt
 git clone <your-repo-url>
 cd rulefollow_test
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Or install in development mode
+# Install in development mode
 pip install -e .
 ```
 
