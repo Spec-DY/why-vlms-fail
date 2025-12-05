@@ -13,22 +13,6 @@ This repository contains two complementary test suites that systematically evalu
 | [**Perception**](./perception/README.md) | Visual perception accuracy
 | [**Rule Following**](./rule_following/README.md) | Spatial & temporal reasoning
 
-## Project Structure
-
-```
-vlm_benchmark/
-├── perception/              # Perception test suite
-│   ├── tests/               # Test scripts (patch, density, resolution, richness)
-│   ├── shared/              # Shared utilities & model configs
-│   └── assets/              # Game assets (textures, pieces)
-│
-├── rule_following/          # Rule following test suite
-│   ├── src/                 # Core modules (spatial, temporal, condition)
-│   └── run/                 # Test runners
-│
-└── README.md                # This file
-```
-
 ## Test Suites
 
 ### Perception Tests
