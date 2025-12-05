@@ -1,6 +1,6 @@
-# VLM Benchmark
+# Why VLMs Fail?
 
-A comprehensive benchmark suite for evaluating Vision Language Models (VLMs) using board game scenarios.
+Diagnostic tests for understanding why VLMs fail in game scenarios.
 
 ## Overview
 
