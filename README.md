@@ -3,6 +3,8 @@
 Diagnostic tests for understanding why VLMs fail in game scenarios.
 
 ## Overview
+<img width="8007" height="5405" alt="Poster" src="https://github.com/user-attachments/assets/0df641f3-4d1c-4b18-88e4-324df244bb78" />
+
 
 This repository contains two complementary test suites that systematically evaluate VLM capabilities:
 
@@ -69,6 +71,9 @@ cd perception
 pip install -r requirements.txt
 cd ..
 ```
+
+### Results
+Download from this [google drive link](https://drive.google.com/drive/folders/1jPYZdfO9Z5y_qtnBkqfkC3va7FG4dlNv?usp=sharing) to view our results. 
 
 ### Configuration
 
