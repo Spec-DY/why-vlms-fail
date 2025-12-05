@@ -46,10 +46,11 @@ Evaluates how visual factors affect VLM perception accuracy:
 
 Evaluates spatial and temporal reasoning with chess rules:
 
-- **Spatial Test 0** - Pure spatial reasoning (no chess knowledge)
+- **Spatial Test 0** - Pure spatial reasoning
 - **Spatial Test 1** - Chess movement rules for all piece types
 - **Temporal Test 0** - Sequence understanding & state tracking
-- **Temporal Test 1** - Time-dependent rules (en passant, castling)
+- **Temporal Test 1** - Time-dependent rules
+- **Condition Ladder** - Accuracy with increasing conditions
 
 👉 [View detailed documentation](./rule_following/README.md)
 
