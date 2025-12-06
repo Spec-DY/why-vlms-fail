@@ -4,7 +4,10 @@ Unified script to run any combination of Level 1-6 tests
 """
 
 from src.model_client import DummyModelClient, NovitaModelClient, DashScopeModelClient, XAIModelClient
-from src.temporal_levels import TemporalLevel1, TemporalLevel2, TemporalLevel3, TemporalLevel4, TemporalLevel5
+from src.temporal_levels import (
+    TemporalLevel1, TemporalLevel2, TemporalLevel3,
+    TemporalLevel4, TemporalLevel5, TemporalLevel6
+)
 import sys
 import argparse
 import os
@@ -41,10 +44,17 @@ LEVEL_CONFIG = {
         "description": "Tests en passant timing and check constraints"
     },
     5: {
-        "name": "Castling with Check Constraints",
+        "name": "Castling with 2 Check Rules",
         "class": TemporalLevel5,
         "default_cases": 100,
-        "description": "Tests castling legality regarding check constraints (in, through, into)"},
+        "description": "Tests castling legality regarding 2 check constraints (3 choose 2)"
+    },
+    6: {
+        "name": "Castling with 3 Check Rules",
+        "class": TemporalLevel6,
+        "default_cases": 100,
+        "description": "Tests castling with all 3 check rules, 7 violation combinations (100% invalid)"
+    },
 }
 
 
@@ -266,7 +276,7 @@ Examples:
   # Run Levels 1, 2, 3
   python run/run_temporal_levels.py -l 1 2 3
 
-  # Run all levels
+  # Run all levels (1-6)
   python run/run_temporal_levels.py --all
 
   # Run with custom number of cases
@@ -291,7 +301,7 @@ Examples:
     level_group.add_argument(
         "--all",
         action="store_true",
-        help="Run all available levels"
+        help="Run all available levels (1-6)"
     )
 
     # Test configuration
