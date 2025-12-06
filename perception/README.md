@@ -205,10 +205,6 @@ plotter.plot_detection_analysis(
 See `shared/plotting/example_usage.py` for more examples.
 
 ## Notes
-
-- All output paths are relative to the project root
-- Run scripts from the project root directory
-- Assets should be placed in the `assets/` directory
 - Model configurations are centralized in `shared/model_configs.py`
 - Each test can be run independently
 - Plotting utilities are in `shared/plotting/` and support both Gomoku and Chess
