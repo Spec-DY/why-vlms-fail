@@ -1,13 +1,11 @@
 """
-Level 3 Generator: En Passant Basic (Temporal Version)
-Tests the 3 basic conditions for en passant capture:
-1. The captured pawn starts from its initial position
-2. The captured pawn makes a double-step move
-3. The two pawns are adjacent
+Level 3 Generator: Path Blocked Capture (Temporal Version)
+Tests temporal changes in path blocking:
+- Blocking piece moves away -> Path opens -> Can capture
+- Blocking piece moves but still blocks -> Cannot capture
+- New piece moves into path -> Cannot capture
 
-Added temporal tracking elements:
-- Distractor piece movements
-- Multiple pawn confusion
+Predictive question: Given historical state sequence, ask if capture is possible
 """
 
 import random
@@ -16,694 +14,584 @@ from collections import defaultdict
 
 
 class Level3Generator:
-    """Generate Level 3 test cases - en passant with temporal tracking"""
+    """Generate Level 3 test cases - path blocked capture with temporal changes"""
 
     def __init__(self, seed: int = 42):
         random.seed(seed)
         self.files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
         self.ranks = ['1', '2', '3', '4', '5', '6', '7', '8']
+        self.piece_types = ['rook', 'bishop', 'queen']
 
-    def _adjacent_files(self, file: str) -> List[str]:
-        """Get adjacent files"""
-        file_idx = self.files.index(file)
-        adjacent = []
-        if file_idx > 0:
-            adjacent.append(self.files[file_idx - 1])
-        if file_idx < 7:
-            adjacent.append(self.files[file_idx + 1])
-        return adjacent
+    def _random_square(self) -> str:
+        return random.choice(self.files) + random.choice(self.ranks)
+
+    def _square_to_coords(self, square: str) -> Tuple[int, int]:
+        file = ord(square[0]) - ord('a')
+        rank = int(square[1]) - 1
+        return (file, rank)
+
+    def _coords_to_square(self, file: int, rank: int) -> Optional[str]:
+        if 0 <= file < 8 and 0 <= rank < 8:
+            return chr(ord('a') + file) + str(rank + 1)
+        return None
+
+    def _piece_symbol(self, piece_type: str, color: str) -> str:
+        symbols = {
+            ('rook', 'white'): 'R', ('rook', 'black'): 'r',
+            ('bishop', 'white'): 'B', ('bishop', 'black'): 'b',
+            ('queen', 'white'): 'Q', ('queen', 'black'): 'q',
+            ('knight', 'white'): 'N', ('knight', 'black'): 'n',
+            ('pawn', 'white'): 'P', ('pawn', 'black'): 'p',
+        }
+        return symbols.get((piece_type, color), 'P')
+
+    def _get_opposite_color(self, color: str) -> str:
+        return 'black' if color == 'white' else 'white'
+
+    def _get_path_squares(self, start: str, end: str) -> List[str]:
+        """Get all squares between two points (excluding endpoints)"""
+        start_f, start_r = self._square_to_coords(start)
+        end_f, end_r = self._square_to_coords(end)
+
+        df = end_f - start_f
+        dr = end_r - start_r
+
+        # Determine direction
+        step_f = 0 if df == 0 else (1 if df > 0 else -1)
+        step_r = 0 if dr == 0 else (1 if dr > 0 else -1)
+
+        # Verify it's a straight line or diagonal
+        if not ((df == 0 and dr != 0) or (dr == 0 and df != 0) or (abs(df) == abs(dr) and df != 0)):
+            return []
+
+        path = []
+        curr_f, curr_r = start_f + step_f, start_r + step_r
+
+        while (curr_f, curr_r) != (end_f, end_r):
+            sq = self._coords_to_square(curr_f, curr_r)
+            if sq:
+                path.append(sq)
+            curr_f += step_f
+            curr_r += step_r
+
+        return path
+
+    def _is_valid_move_for_piece(self, start: str, end: str, piece_type: str) -> bool:
+        """Check if move follows piece rules"""
+        start_f, start_r = self._square_to_coords(start)
+        end_f, end_r = self._square_to_coords(end)
+
+        df = abs(end_f - start_f)
+        dr = abs(end_r - start_r)
+
+        if piece_type == 'rook':
+            return (df == 0 and dr > 0) or (dr == 0 and df > 0)
+        elif piece_type == 'bishop':
+            return df == dr and df > 0
+        elif piece_type == 'queen':
+            return (df == 0 and dr > 0) or (dr == 0 and df > 0) or (df == dr and df > 0)
+        elif piece_type == 'knight':
+            return (df == 2 and dr == 1) or (df == 1 and dr == 2)
+        return False
 
     def _get_knight_moves(self, square: str, forbidden: Set[str]) -> List[str]:
         """Get all legal knight move targets"""
-        f = ord(square[0]) - ord('a')
-        r = int(square[1]) - 1
+        f, r = self._square_to_coords(square)
         moves = []
         for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
-            new_f, new_r = f + df, r + dr
-            if 0 <= new_f < 8 and 0 <= new_r < 8:
-                sq = chr(ord('a') + new_f) + str(new_r + 1)
-                if sq not in forbidden:
-                    moves.append(sq)
+            sq = self._coords_to_square(f + df, r + dr)
+            if sq and sq not in forbidden:
+                moves.append(sq)
         return moves
 
-    def _get_safe_knight_position(self, forbidden: Set[str]) -> Optional[str]:
-        """Find a safe knight position"""
+    def _get_rook_moves(self, square: str, forbidden: Set[str], occupied: Set[str]) -> List[str]:
+        """Get all legal rook move targets (considering blocking)"""
+        f, r = self._square_to_coords(square)
+        moves = []
+
+        # Four directions
+        for df, dr in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            for dist in range(1, 8):
+                sq = self._coords_to_square(f + df * dist, r + dr * dist)
+                if sq is None:
+                    break
+                if sq in forbidden:
+                    break
+                if sq in occupied:
+                    break
+                moves.append(sq)
+
+        return moves
+
+    def _get_bishop_moves(self, square: str, forbidden: Set[str], occupied: Set[str]) -> List[str]:
+        """Get all legal bishop move targets (considering blocking)"""
+        f, r = self._square_to_coords(square)
+        moves = []
+
+        for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
+            for dist in range(1, 8):
+                sq = self._coords_to_square(f + df * dist, r + dr * dist)
+                if sq is None:
+                    break
+                if sq in forbidden:
+                    break
+                if sq in occupied:
+                    break
+                moves.append(sq)
+
+        return moves
+
+    def _generate_attack_setup(self, piece_type: str) -> Optional[Dict]:
+        """Generate basic setup for attacker and target"""
         for _ in range(100):
-            f = random.choice(self.files)
-            r = random.choice(self.ranks)
-            sq = f + r
-            if sq not in forbidden:
-                # Ensure knight has somewhere to move
-                moves = self._get_knight_moves(sq, forbidden)
-                if moves:
-                    return sq
+            attacker_sq = self._random_square()
+            attacker_f, attacker_r = self._square_to_coords(attacker_sq)
+
+            # Generate target position based on piece type
+            if piece_type == 'rook':
+                # Straight line move
+                move_type = random.choice(['horizontal', 'vertical'])
+                # Need enough distance for blocking piece
+                distance = random.randint(4, 6)
+                direction = random.choice([-1, 1])
+
+                if move_type == 'horizontal':
+                    target_f = attacker_f + direction * distance
+                    target_r = attacker_r
+                else:
+                    target_f = attacker_f
+                    target_r = attacker_r + direction * distance
+
+            elif piece_type == 'bishop':
+                # Diagonal move
+                distance = random.randint(4, 6)
+                dir_f = random.choice([-1, 1])
+                dir_r = random.choice([-1, 1])
+                target_f = attacker_f + dir_f * distance
+                target_r = attacker_r + dir_r * distance
+
+            else:  # queen
+                move_like = random.choice(['rook', 'bishop'])
+                if move_like == 'rook':
+                    move_type = random.choice(['horizontal', 'vertical'])
+                    distance = random.randint(4, 6)
+                    direction = random.choice([-1, 1])
+                    if move_type == 'horizontal':
+                        target_f = attacker_f + direction * distance
+                        target_r = attacker_r
+                    else:
+                        target_f = attacker_f
+                        target_r = attacker_r + direction * distance
+                else:
+                    distance = random.randint(4, 6)
+                    dir_f = random.choice([-1, 1])
+                    dir_r = random.choice([-1, 1])
+                    target_f = attacker_f + dir_f * distance
+                    target_r = attacker_r + dir_r * distance
+
+            if 0 <= target_f < 8 and 0 <= target_r < 8:
+                target_sq = self._coords_to_square(target_f, target_r)
+                path = self._get_path_squares(attacker_sq, target_sq)
+
+                if len(path) >= 2:  # Need at least 2 intermediate squares
+                    return {
+                        'attacker_sq': attacker_sq,
+                        'target_sq': target_sq,
+                        'path': path
+                    }
+
         return None
 
-    # ==================== VALID: ALL CONDITIONS MET ====================
+    # ==================== VALID: PATH CLEARED ====================
 
-    def _generate_valid_case(self, case_num: int) -> Optional[Dict]:
+    def _generate_path_cleared_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Valid: All conditions met, with distractor knight
-        State 1: White pawn in position, black pawn at starting position, white knight somewhere
-        State 2: White knight moves (white's turn)
-        State 3: Black pawn double-steps (black's turn)
-        Answer: Yes (white's turn, can capture en passant)
-
-        Fixes:
-        1. Protect en passant target square (Rank 6)
-        2. Force use of white knight to ensure correct move order (white -> black -> white asks)
+        Valid: Blocking piece moves away, path opens
+        State 1: Blocking piece on path
+        State 2: Blocking piece moves away (knight jumps away)
+        Answer: Yes
         """
-        black_file = random.choice(['b', 'c', 'd', 'e', 'f', 'g'])
-        black_start = black_file + '7'
-        black_end = black_file + '5'
-
-        # Fix 1: Calculate en passant landing square (Rank 6)
-        ep_target_sq = black_file + '6'
-
-        adjacent = self._adjacent_files(black_file)
-        white_file = random.choice(adjacent)
-        white_sq = white_file + '5'
-
-        # Fix 2: Add landing square to forbidden
-        forbidden = {white_sq, black_start, black_end, ep_target_sq}
-
-        # Fix 3: Force use of white knight to ensure move order: white knight moves -> black pawn moves -> white's turn to ask
-        knight_symbol = 'N'
-
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
+        setup = self._generate_attack_setup(piece_type)
+        if not setup:
             return None
 
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
+        attacker_sq = setup['attacker_sq']
+        target_sq = setup['target_sq']
+        path = setup['path']
+
+        attacker_color = random.choice(['white', 'black'])
+        target_color = self._get_opposite_color(attacker_color)
+        blocker_color = random.choice(['white', 'black'])
+
+        # Choose a position on path to place blocking knight
+        blocker_start = random.choice(path)
+
+        forbidden = {attacker_sq, target_sq, blocker_start}
+
+        # Find positions knight can jump to (away from path)
+        knight_moves = self._get_knight_moves(blocker_start, forbidden)
+        valid_moves = [sq for sq in knight_moves if sq not in path]
+
+        if not valid_moves:
             return None
 
-        knight_end = random.choice(knight_moves)
+        blocker_end = random.choice(valid_moves)
+
+        attacker_symbol = self._piece_symbol(piece_type, attacker_color)
+        target_symbol = self._piece_symbol('pawn', target_color)
+        blocker_symbol = self._piece_symbol('knight', blocker_color)
 
         state1 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_start: knight_symbol
+            attacker_sq: attacker_symbol,
+            target_sq: target_symbol,
+            blocker_start: blocker_symbol
         }
 
         state2 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_end: knight_symbol
+            attacker_sq: attacker_symbol,
+            target_sq: target_symbol,
+            blocker_end: blocker_symbol
         }
 
-        state3 = {
-            white_sq: 'P',
-            black_end: 'p',
-            knight_end: knight_symbol
-        }
+        piece_name = piece_type.capitalize()
 
         return {
-            "case_id": f"L3_valid_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "all_conditions_met",
+            "case_id": f"L3_{piece_type}_cleared_{case_num}",
+            "type": "path_capture_temporal",
+            "subtype": "path_cleared",
+            "piece_type": piece_type,
+            "attacker_color": attacker_color,
             "states": [
                 {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
+                {"pieces": state2, "squares": []}
             ],
-            "question": f"Can white capture the black pawn at {black_end} en passant?",
+            "question": f"Can the {piece_name} at {attacker_sq} capture the pawn at {target_sq}?",
             "expected": "yes",
-            "reasoning": f"Black pawn just moved 2 squares from {black_start} to {black_end}, white pawn at {white_sq} is adjacent, capture square {ep_target_sq} is clear"
+            "reasoning": f"Knight moved from {blocker_start} to {blocker_end}, path is now clear"
         }
 
-    # ==================== INVALID: NOT FROM START ====================
+    # ==================== INVALID: STILL BLOCKED ====================
 
-    def _generate_not_from_start_case(self, case_num: int) -> Optional[Dict]:
+    def _generate_still_blocked_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Invalid: Black pawn not from starting position
-        State 1: Black pawn at rank 6 (not 7), white knight somewhere
-        State 2: White knight moves
-        State 3: Black pawn moves to rank 5
-        Answer: No (not a double-step from starting position)
+        Invalid: Blocking piece moves but still on path
+        State 1: Blocking piece at path position A
+        State 2: Blocking piece moves to path position B (still blocks)
+        Answer: No
         """
-        black_file = random.choice(['b', 'c', 'd', 'e', 'f', 'g'])
-        # Starting from rank 6 (not starting position)
-        black_start = black_file + '6'
-        black_end = black_file + '5'
-
-        # Although invalid, still protect target square
-        # Note: overlaps with black_start, but conceptually is the target square
-        ep_target_sq = black_file + '6'
-
-        adjacent = self._adjacent_files(black_file)
-        white_file = random.choice(adjacent)
-        white_sq = white_file + '5'
-
-        forbidden = {white_sq, black_start, black_end}
-
-        # Use white knight to ensure correct move order
-        knight_symbol = 'N'
-
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
+        setup = self._generate_attack_setup(piece_type)
+        if not setup:
             return None
 
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
+        attacker_sq = setup['attacker_sq']
+        target_sq = setup['target_sq']
+        path = setup['path']
+
+        if len(path) < 2:
             return None
 
-        knight_end = random.choice(knight_moves)
+        attacker_color = random.choice(['white', 'black'])
+        target_color = self._get_opposite_color(attacker_color)
+        blocker_color = random.choice(['white', 'black'])
+
+        # Choose two different positions on path
+        blocker_positions = random.sample(path, 2)
+        blocker_start = blocker_positions[0]
+        blocker_end = blocker_positions[1]
+
+        # Use Queen as blocking piece (can move along straight and diagonal lines)
+        # This covers both Rook (straight path) and Bishop (diagonal path) cases
+        forbidden = {attacker_sq, target_sq}
+        occupied = {attacker_sq, target_sq}
+
+        # Verify Queen can legally move from blocker_start to blocker_end
+        if not self._is_valid_move_for_piece(blocker_start, blocker_end, 'queen'):
+            return None
+
+        # Check if move path is clear
+        move_path = self._get_path_squares(blocker_start, blocker_end)
+        for sq in move_path:
+            if sq in occupied:
+                return None
+
+        attacker_symbol = self._piece_symbol(piece_type, attacker_color)
+        target_symbol = self._piece_symbol('pawn', target_color)
+        blocker_symbol = self._piece_symbol(
+            'queen', blocker_color)  # Changed to Queen
 
         state1 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_start: knight_symbol
+            attacker_sq: attacker_symbol,
+            target_sq: target_symbol,
+            blocker_start: blocker_symbol
         }
 
         state2 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_end: knight_symbol
+            attacker_sq: attacker_symbol,
+            target_sq: target_symbol,
+            blocker_end: blocker_symbol
         }
 
-        state3 = {
-            white_sq: 'P',
-            black_end: 'p',
-            knight_end: knight_symbol
-        }
+        piece_name = piece_type.capitalize()
 
         return {
-            "case_id": f"L3_not_from_start_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "not_from_start",
+            "case_id": f"L3_{piece_type}_still_blocked_{case_num}",
+            "type": "path_capture_temporal",
+            "subtype": "still_blocked",
+            "piece_type": piece_type,
+            "attacker_color": attacker_color,
             "states": [
                 {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
+                {"pieces": state2, "squares": []}
             ],
-            "question": f"Can white capture the black pawn at {black_end} en passant?",
+            "question": f"Can the {piece_name} at {attacker_sq} capture the pawn at {target_sq}?",
             "expected": "no",
-            "reasoning": f"Black pawn was not on starting rank (started from {black_start}, not rank 7)"
+            "reasoning": f"Queen moved from {blocker_start} to {blocker_end}, but still blocks the path"
         }
 
-    # ==================== INVALID: MOVED ONE SQUARE ====================
+    # ==================== INVALID: PATH BLOCKED ====================
 
-    def _generate_moved_one_square_case(self, case_num: int) -> Optional[Dict]:
+    def _generate_path_blocked_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Invalid: Black pawn only moved 1 square
-        State 1: Black pawn at rank 7, white knight somewhere
-        State 2: White knight moves
-        State 3: Black pawn only moves to rank 6 (not 5)
-        Answer: No (only moved 1 square)
+        Invalid: Piece moves into path, blocking originally clear path
+        State 1: Path clear, piece outside path
+        State 2: Piece moves into path
+        Answer: No
         """
-        black_file = random.choice(['b', 'c', 'd', 'e', 'f', 'g'])
-        black_start = black_file + '7'
-        black_end = black_file + '6'  # Only moved 1 square
-
-        # Protect target square (although this is an invalid case)
-        ep_target_sq = black_file + '6'
-
-        adjacent = self._adjacent_files(black_file)
-        white_file = random.choice(adjacent)
-        white_sq = white_file + '5'
-
-        # black_end and ep_target_sq overlap, so forbidden includes it
-        forbidden = {white_sq, black_start, black_end}
-
-        # Use white knight
-        knight_symbol = 'N'
-
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
+        setup = self._generate_attack_setup(piece_type)
+        if not setup:
             return None
 
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
+        attacker_sq = setup['attacker_sq']
+        target_sq = setup['target_sq']
+        path = setup['path']
+
+        attacker_color = random.choice(['white', 'black'])
+        target_color = self._get_opposite_color(attacker_color)
+        blocker_color = random.choice(['white', 'black'])
+
+        # Choose a target position on path
+        blocker_end = random.choice(path)
+
+        forbidden = {attacker_sq, target_sq, blocker_end} | set(path)
+
+        # Find positions knight can jump from (outside path into path)
+        # Reverse search: from blocker_end find all positions that can jump here
+        end_f, end_r = self._square_to_coords(blocker_end)
+        possible_starts = []
+
+        for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
+            sq = self._coords_to_square(end_f + df, end_r + dr)
+            if sq and sq not in forbidden:
+                possible_starts.append(sq)
+
+        if not possible_starts:
             return None
 
-        knight_end = random.choice(knight_moves)
+        blocker_start = random.choice(possible_starts)
+
+        attacker_symbol = self._piece_symbol(piece_type, attacker_color)
+        target_symbol = self._piece_symbol('pawn', target_color)
+        blocker_symbol = self._piece_symbol('knight', blocker_color)
 
         state1 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_start: knight_symbol
+            attacker_sq: attacker_symbol,
+            target_sq: target_symbol,
+            blocker_start: blocker_symbol
         }
 
         state2 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_end: knight_symbol
+            attacker_sq: attacker_symbol,
+            target_sq: target_symbol,
+            blocker_end: blocker_symbol
         }
 
-        state3 = {
-            white_sq: 'P',
-            black_end: 'p',
-            knight_end: knight_symbol
-        }
+        piece_name = piece_type.capitalize()
 
         return {
-            "case_id": f"L3_one_square_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "moved_one_square",
+            "case_id": f"L3_{piece_type}_blocked_{case_num}",
+            "type": "path_capture_temporal",
+            "subtype": "path_blocked",
+            "piece_type": piece_type,
+            "attacker_color": attacker_color,
             "states": [
                 {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
+                {"pieces": state2, "squares": []}
             ],
-            "question": f"Can white capture the black pawn at {black_end} en passant?",
+            "question": f"Can the {piece_name} at {attacker_sq} capture the pawn at {target_sq}?",
             "expected": "no",
-            "reasoning": f"Black pawn only moved 1 square from {black_start} to {black_end}"
+            "reasoning": f"Knight moved from {blocker_start} to {blocker_end}, now blocks the path"
         }
 
-    # ==================== INVALID: NOT ADJACENT ====================
+    # ==================== INVALID: WRONG PATTERN ====================
 
-    def _generate_not_adjacent_case(self, case_num: int) -> Optional[Dict]:
+    def _generate_invalid_pattern_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Invalid: White pawn and black pawn not adjacent
-        State 1: Black pawn at rank 7, white pawn on non-adjacent file, white knight somewhere
-        State 2: White knight moves
-        State 3: Black pawn double-steps
-        Answer: No (not adjacent)
+        Invalid: Attacker movement pattern is wrong
+        Example: Rook moves diagonally, Bishop moves straight
         """
-        black_file = random.choice(['a', 'b', 'c', 'd'])
-        black_start = black_file + '7'
-        black_end = black_file + '5'
-
-        # Protect target square
-        ep_target_sq = black_file + '6'
-
-        # Choose non-adjacent file
-        black_file_idx = self.files.index(black_file)
-        non_adjacent = [f for i, f in enumerate(
-            self.files) if abs(i - black_file_idx) >= 2]
-
-        if not non_adjacent:
-            return None
-
-        white_file = random.choice(non_adjacent)
-        white_sq = white_file + '5'
-
-        forbidden = {white_sq, black_start, black_end, ep_target_sq}
-
-        # Use white knight
-        knight_symbol = 'N'
-
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
-            return None
-
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
-            return None
-
-        knight_end = random.choice(knight_moves)
-
-        state1 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_start: knight_symbol
-        }
-
-        state2 = {
-            white_sq: 'P',
-            black_start: 'p',
-            knight_end: knight_symbol
-        }
-
-        state3 = {
-            white_sq: 'P',
-            black_end: 'p',
-            knight_end: knight_symbol
-        }
-
-        return {
-            "case_id": f"L3_not_adjacent_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "not_adjacent",
-            "states": [
-                {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
-            ],
-            "question": f"Can white capture the black pawn at {black_end} en passant?",
-            "expected": "no",
-            "reasoning": f"White pawn at {white_sq} is not adjacent to black pawn at {black_end}"
-        }
-
-    # ==================== INVALID: MULTI-PAWN CONFUSION ====================
-
-    def _generate_multi_pawn_confusion_case(self, case_num: int) -> Optional[Dict]:
-        """
-        Invalid: Multiple pawn confusion - the pawn that double-stepped and the pawn being asked about are different
-
-        Fixed move order:
-        State 1: Black pawn A already at c5 (implies historical double-step, but that was "before"), black pawn B at e6, white knight somewhere
-        State 2: White knight moves (white's turn)
-        State 3: Black pawn B moves to e5 (black's turn, only moves 1 square)
-
-        Question: Can capture black pawn B (at e5)? -> No (black pawn B only moved 1 square)
-
-        Note: Although pawn A double-stepped before, that right has already expired since many moves have passed
-        """
-        white_file = random.choice(['c', 'd', 'e', 'f'])
-        white_sq = white_file + '5'
-
-        adjacent = self._adjacent_files(white_file)
-        if len(adjacent) < 2:
-            return None
-
-        # Black pawn A: already at c5 (historically double-stepped, but right expired)
-        pawn_a_file = adjacent[0]
-        pawn_a_sq = pawn_a_file + '5'  # Already at rank 5
-
-        # Black pawn A's target square (if capturing), needs protection
-        ep_target_a = pawn_a_file + '6'
-
-        # Black pawn B: moves from e6 to e5 (only 1 square, this is what we ask about)
-        pawn_b_file = adjacent[1]
-        pawn_b_start = pawn_b_file + '6'
-        pawn_b_end = pawn_b_file + '5'
-
-        # Black pawn B's target square
-        ep_target_b = pawn_b_file + '6'  # Overlaps with pawn_b_start
-
-        forbidden = {white_sq, pawn_a_sq,
-                     pawn_b_start, pawn_b_end, ep_target_a}
-
-        # White knight
-        knight_symbol = 'N'
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
-            return None
-
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
-            return None
-
-        knight_end = random.choice(knight_moves)
-
-        state1 = {
-            white_sq: 'P',
-            pawn_a_sq: 'p',
-            pawn_b_start: 'p',
-            knight_start: knight_symbol
-        }
-
-        state2 = {
-            white_sq: 'P',
-            pawn_a_sq: 'p',
-            pawn_b_start: 'p',
-            knight_end: knight_symbol
-        }
-
-        state3 = {
-            white_sq: 'P',
-            pawn_a_sq: 'p',
-            pawn_b_end: 'p',
-            knight_end: knight_symbol
-        }
-
-        return {
-            "case_id": f"L3_confusion_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "multi_pawn_confusion",
-            "states": [
-                {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
-            ],
-            "question": f"Can white capture the black pawn at {pawn_b_end} en passant?",
-            "expected": "no",
-            "reasoning": f"The pawn at {pawn_b_end} only moved 1 square from {pawn_b_start}; en passant requires a double-step move"
-        }
-
-    # ==================== INVALID: WRONG PAWN DOUBLE STEPPED ====================
-
-    def _generate_wrong_pawn_case(self, case_num: int) -> Optional[Dict]:
-        """
-        Invalid: Asking about the pawn that didn't just double-step
-
-        State 1: White pawn at d5, black pawn A at c7, black pawn B at e5 (already there), white knight
-        State 2: White knight moves (white's turn)
-        State 3: Black pawn A double-steps to c5 (black's turn)
-
-        Question: Can capture black pawn B (at e5)? -> No (black pawn B didn't just double-step)
-
-        Move order: white -> black -> white's turn to ask
-        """
-        white_file = random.choice(['c', 'd', 'e', 'f'])
-        white_sq = white_file + '5'
-
-        adjacent = self._adjacent_files(white_file)
-        if len(adjacent) < 2:
-            return None
-
-        # Black pawn A: double-steps (this one just moved, can be captured, but we don't ask about this one)
-        pawn_a_file = adjacent[0]
-        pawn_a_start = pawn_a_file + '7'
-        pawn_a_end = pawn_a_file + '5'
-        ep_target_a = pawn_a_file + '6'
-
-        # Black pawn B: already at e5 (we ask about this one, answer is No)
-        pawn_b_file = adjacent[1]
-        pawn_b_sq = pawn_b_file + '5'
-        ep_target_b = pawn_b_file + '6'
-
-        forbidden = {white_sq, pawn_a_start, pawn_a_end,
-                     pawn_b_sq, ep_target_a, ep_target_b}
-
-        # White knight
-        knight_symbol = 'N'
-
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
-            return None
-
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
-            return None
-
-        knight_end = random.choice(knight_moves)
-
-        state1 = {
-            white_sq: 'P',
-            pawn_a_start: 'p',
-            pawn_b_sq: 'p',
-            knight_start: knight_symbol
-        }
-
-        state2 = {
-            white_sq: 'P',
-            pawn_a_start: 'p',
-            pawn_b_sq: 'p',
-            knight_end: knight_symbol
-        }
-
-        state3 = {
-            white_sq: 'P',
-            pawn_a_end: 'p',
-            pawn_b_sq: 'p',
-            knight_end: knight_symbol
-        }
-
-        return {
-            "case_id": f"L3_wrong_pawn_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "wrong_pawn_asked",
-            "states": [
-                {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
-            ],
-            "question": f"Can white capture the black pawn at {pawn_b_sq} en passant?",
-            "expected": "no",
-            "reasoning": f"The pawn at {pawn_b_sq} did not just make a double-step move; the pawn at {pawn_a_end} did"
-        }
-
-    # ==================== VALID: CORRECT PAWN IDENTIFIED ====================
-
-    def _generate_correct_pawn_case(self, case_num: int) -> Optional[Dict]:
-        """
-        Valid: Multiple pawns present, but asking about the correct one (the one that just double-stepped)
-
-        State 1: White pawn at d5, black pawn A at c7, black pawn B at e5 (already there), white knight
-        State 2: White knight moves (white's turn)
-        State 3: Black pawn A double-steps to c5 (black's turn)
-
-        Question: Can capture black pawn A (at c5)? -> Yes (black pawn A just double-stepped)
-        """
-        white_file = random.choice(['c', 'd', 'e', 'f'])
-        white_sq = white_file + '5'
-
-        adjacent = self._adjacent_files(white_file)
-        if len(adjacent) < 2:
-            return None
-
-        # Black pawn A: double-steps (we ask about this one, answer is Yes)
-        pawn_a_file = adjacent[0]
-        pawn_a_start = pawn_a_file + '7'
-        pawn_a_end = pawn_a_file + '5'
-        ep_target_a = pawn_a_file + '6'
-
-        # Black pawn B: already at e5 (distractor)
-        pawn_b_file = adjacent[1]
-        pawn_b_sq = pawn_b_file + '5'
-        ep_target_b = pawn_b_file + '6'
-
-        forbidden = {white_sq, pawn_a_start, pawn_a_end,
-                     pawn_b_sq, ep_target_a, ep_target_b}
-
-        # White knight
-        knight_symbol = 'N'
-
-        knight_start = self._get_safe_knight_position(forbidden)
-        if not knight_start:
-            return None
-
-        forbidden.add(knight_start)
-        knight_moves = self._get_knight_moves(knight_start, forbidden)
-        if not knight_moves:
-            return None
-
-        knight_end = random.choice(knight_moves)
-
-        state1 = {
-            white_sq: 'P',
-            pawn_a_start: 'p',
-            pawn_b_sq: 'p',
-            knight_start: knight_symbol
-        }
-
-        state2 = {
-            white_sq: 'P',
-            pawn_a_start: 'p',
-            pawn_b_sq: 'p',
-            knight_end: knight_symbol
-        }
-
-        state3 = {
-            white_sq: 'P',
-            pawn_a_end: 'p',
-            pawn_b_sq: 'p',
-            knight_end: knight_symbol
-        }
-
-        return {
-            "case_id": f"L3_correct_pawn_{case_num}",
-            "type": "en_passant_temporal",
-            "subtype": "correct_pawn_identified",
-            "states": [
-                {"pieces": state1, "squares": []},
-                {"pieces": state2, "squares": []},
-                {"pieces": state3, "squares": []}
-            ],
-            "question": f"Can white capture the black pawn at {pawn_a_end} en passant?",
-            "expected": "yes",
-            "reasoning": f"The pawn at {pawn_a_end} just moved 2 squares from {pawn_a_start}; capture square {ep_target_a} is clear"
-        }
+        for _ in range(100):
+            attacker_sq = self._random_square()
+            attacker_f, attacker_r = self._square_to_coords(attacker_sq)
+
+            # Generate wrong movement pattern
+            if piece_type == 'rook':
+                # Rook moves diagonally (wrong)
+                distance = random.randint(2, 4)
+                dir_f = random.choice([-1, 1])
+                dir_r = random.choice([-1, 1])
+                target_f = attacker_f + dir_f * distance
+                target_r = attacker_r + dir_r * distance
+                error_desc = "Rook cannot move diagonally"
+
+            elif piece_type == 'bishop':
+                # Bishop moves straight (wrong)
+                move_type = random.choice(['horizontal', 'vertical'])
+                distance = random.randint(2, 4)
+                direction = random.choice([-1, 1])
+                if move_type == 'horizontal':
+                    target_f = attacker_f + direction * distance
+                    target_r = attacker_r
+                else:
+                    target_f = attacker_f
+                    target_r = attacker_r + direction * distance
+                error_desc = "Bishop cannot move in straight line"
+
+            else:  # queen
+                # Queen moves in L-shape (wrong)
+                l_moves = [(2, 1), (2, -1), (-2, 1), (-2, -1),
+                           (1, 2), (1, -2), (-1, 2), (-1, -2)]
+                df, dr = random.choice(l_moves)
+                target_f = attacker_f + df
+                target_r = attacker_r + dr
+                error_desc = "Queen cannot move in L-shape"
+
+            if 0 <= target_f < 8 and 0 <= target_r < 8:
+                target_sq = self._coords_to_square(target_f, target_r)
+
+                attacker_color = random.choice(['white', 'black'])
+                target_color = self._get_opposite_color(attacker_color)
+
+                # Add an unrelated piece to increase complexity
+                forbidden = {attacker_sq, target_sq}
+                extra_sq = None
+                for _ in range(50):
+                    sq = self._random_square()
+                    if sq not in forbidden:
+                        extra_sq = sq
+                        break
+
+                attacker_symbol = self._piece_symbol(
+                    piece_type, attacker_color)
+                target_symbol = self._piece_symbol('pawn', target_color)
+
+                state1_pieces = {
+                    attacker_sq: attacker_symbol,
+                    target_sq: target_symbol,
+                }
+
+                state2_pieces = {
+                    attacker_sq: attacker_symbol,
+                    target_sq: target_symbol,
+                }
+
+                if extra_sq:
+                    extra_color = random.choice(['white', 'black'])
+                    extra_symbol = self._piece_symbol('knight', extra_color)
+
+                    # Let extra piece move
+                    extra_moves = self._get_knight_moves(extra_sq, forbidden)
+                    if extra_moves:
+                        extra_end = random.choice(extra_moves)
+                        state1_pieces[extra_sq] = extra_symbol
+                        state2_pieces[extra_end] = extra_symbol
+
+                piece_name = piece_type.capitalize()
+
+                return {
+                    "case_id": f"L3_{piece_type}_invalid_{case_num}",
+                    "type": "path_capture_temporal",
+                    "subtype": "invalid_pattern",
+                    "piece_type": piece_type,
+                    "attacker_color": attacker_color,
+                    "states": [
+                        {"pieces": state1_pieces, "squares": []},
+                        {"pieces": state2_pieces, "squares": []}
+                    ],
+                    "question": f"Can the {piece_name} at {attacker_sq} capture the pawn at {target_sq}?",
+                    "expected": "no",
+                    "reasoning": error_desc
+                }
+
+        return None
 
     # ==================== GENERATE ALL ====================
 
-    def generate_all(self, n_cases: int = 100) -> List[Dict]:
+    def generate_all(self, n_cases: int = 90) -> List[Dict]:
         """Generate all Level 3 test cases"""
         all_cases = []
 
-        # Distribution ratio
-        # Valid: 30% (basic valid + correct pawn identified)
-        # Invalid: 70%
-        n_valid_basic = int(n_cases * 0.15)
-        n_valid_correct = int(n_cases * 0.15)
-        n_invalid = n_cases - n_valid_basic - n_valid_correct
+        # Number of cases per piece type
+        cases_per_piece = n_cases // 3
+        remainder = n_cases % 3
 
-        # Invalid distribution
-        n_not_from_start = n_invalid // 5
-        n_one_square = n_invalid // 5
-        n_not_adjacent = n_invalid // 5
-        n_confusion = n_invalid // 5
-        n_wrong_pawn = n_invalid - n_not_from_start - \
-            n_one_square - n_not_adjacent - n_confusion
+        for idx, piece_type in enumerate(self.piece_types):
+            n_piece_cases = cases_per_piece + (1 if idx < remainder else 0)
 
-        print(f"Generating valid cases (basic)...")
-        valid_basic_count = 0
-        for _ in range(n_valid_basic * 10):
-            if valid_basic_count >= n_valid_basic:
-                break
-            case = self._generate_valid_case(valid_basic_count + 1)
-            if case:
-                all_cases.append(case)
-                valid_basic_count += 1
-        print(f"  ✓ Generated {valid_basic_count} valid basic cases")
+            # Distribution: 25% valid, 75% invalid (25% still_blocked, 25% path_blocked, 25% invalid_pattern)
+            n_valid = n_piece_cases // 4
+            n_still_blocked = n_piece_cases // 4
+            n_path_blocked = n_piece_cases // 4
+            n_invalid = n_piece_cases - n_valid - n_still_blocked - n_path_blocked
 
-        print(f"Generating valid cases (correct pawn)...")
-        valid_correct_count = 0
-        for _ in range(n_valid_correct * 10):
-            if valid_correct_count >= n_valid_correct:
-                break
-            case = self._generate_correct_pawn_case(valid_correct_count + 1)
-            if case:
-                all_cases.append(case)
-                valid_correct_count += 1
-        print(f"  ✓ Generated {valid_correct_count} correct pawn cases")
+            print(f"Generating {piece_type} tests...")
 
-        print(f"Generating invalid cases...")
+            # Valid: path cleared
+            cleared_count = 0
+            for _ in range(n_valid * 10):
+                if cleared_count >= n_valid:
+                    break
+                case = self._generate_path_cleared_case(
+                    piece_type, cleared_count + 1)
+                if case:
+                    all_cases.append(case)
+                    cleared_count += 1
+            print(f"  ✓ Generated {cleared_count} path_cleared cases")
 
-        # Not from start
-        not_start_count = 0
-        for _ in range(n_not_from_start * 10):
-            if not_start_count >= n_not_from_start:
-                break
-            case = self._generate_not_from_start_case(not_start_count + 1)
-            if case:
-                all_cases.append(case)
-                not_start_count += 1
-        print(f"  ✓ Generated {not_start_count} not_from_start cases")
+            # Invalid: still blocked
+            still_count = 0
+            for _ in range(n_still_blocked * 10):
+                if still_count >= n_still_blocked:
+                    break
+                case = self._generate_still_blocked_case(
+                    piece_type, still_count + 1)
+                if case:
+                    all_cases.append(case)
+                    still_count += 1
+            print(f"  ✓ Generated {still_count} still_blocked cases")
 
-        # Moved one square
-        one_sq_count = 0
-        for _ in range(n_one_square * 10):
-            if one_sq_count >= n_one_square:
-                break
-            case = self._generate_moved_one_square_case(one_sq_count + 1)
-            if case:
-                all_cases.append(case)
-                one_sq_count += 1
-        print(f"  ✓ Generated {one_sq_count} moved_one_square cases")
+            # Invalid: path blocked
+            blocked_count = 0
+            for _ in range(n_path_blocked * 10):
+                if blocked_count >= n_path_blocked:
+                    break
+                case = self._generate_path_blocked_case(
+                    piece_type, blocked_count + 1)
+                if case:
+                    all_cases.append(case)
+                    blocked_count += 1
+            print(f"  ✓ Generated {blocked_count} path_blocked cases")
 
-        # Not adjacent
-        not_adj_count = 0
-        for _ in range(n_not_adjacent * 10):
-            if not_adj_count >= n_not_adjacent:
-                break
-            case = self._generate_not_adjacent_case(not_adj_count + 1)
-            if case:
-                all_cases.append(case)
-                not_adj_count += 1
-        print(f"  ✓ Generated {not_adj_count} not_adjacent cases")
-
-        # Multi-pawn confusion
-        confusion_count = 0
-        for _ in range(n_confusion * 10):
-            if confusion_count >= n_confusion:
-                break
-            case = self._generate_multi_pawn_confusion_case(
-                confusion_count + 1)
-            if case:
-                all_cases.append(case)
-                confusion_count += 1
-        print(f"  ✓ Generated {confusion_count} multi_pawn_confusion cases")
-
-        # Wrong pawn asked
-        wrong_count = 0
-        for _ in range(n_wrong_pawn * 10):
-            if wrong_count >= n_wrong_pawn:
-                break
-            case = self._generate_wrong_pawn_case(wrong_count + 1)
-            if case:
-                all_cases.append(case)
-                wrong_count += 1
-        print(f"  ✓ Generated {wrong_count} wrong_pawn_asked cases")
+            # Invalid: wrong pattern
+            invalid_count = 0
+            for _ in range(n_invalid * 10):
+                if invalid_count >= n_invalid:
+                    break
+                case = self._generate_invalid_pattern_case(
+                    piece_type, invalid_count + 1)
+                if case:
+                    all_cases.append(case)
+                    invalid_count += 1
+            print(f"  ✓ Generated {invalid_count} invalid_pattern cases")
 
         # Shuffle order
         random.shuffle(all_cases)
@@ -713,14 +601,7 @@ class Level3Generator:
         for case in all_cases:
             stats[case['subtype']] += 1
 
-        total_valid = valid_basic_count + valid_correct_count
-        total_invalid = len(all_cases) - total_valid
-
         print(f"\n✓ Total generated: {len(all_cases)} Level 3 test cases")
-        print(
-            f"  Valid: {total_valid} ({total_valid/len(all_cases)*100:.1f}%)")
-        print(
-            f"  Invalid: {total_invalid} ({total_invalid/len(all_cases)*100:.1f}%)")
         print(f"  Breakdown:")
         for subtype, count in sorted(stats.items()):
             print(f"    {subtype}: {count} ({count/len(all_cases)*100:.1f}%)")
