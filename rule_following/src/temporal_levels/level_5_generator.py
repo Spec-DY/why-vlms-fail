@@ -1,8 +1,10 @@
 """
-Level 5 Generator: Castling + 2 Check Rules (Enhanced)
-增加干扰项：
-1. "看似攻击但被阻挡"的棋子
-2. 更复杂的棋盘布局
+Level 5 Generator: Castling + Temporal History + 2 Check Rules
+测试王车易位的时序规则：
+1. 王/车是否移动过（即使移回原位也不能易位）
+2. 两条Check约束（从in/through/into中选2条）
+
+预测性问题：给定历史状态序列，问能否进行易位
 """
 
 import random
@@ -11,7 +13,7 @@ from collections import defaultdict
 
 
 class Level5Generator:
-    """Generate Level 5 test cases - castling with 2 check rules (enhanced)"""
+    """Generate Level 5 test cases - castling with temporal history + 2 check rules"""
 
     PIECE_LIMITS = {
         'king': 1,
@@ -30,33 +32,50 @@ class Level5Generator:
             'white_kingside': {
                 'king_start': 'e1', 'king_end': 'g1',
                 'rook_start': 'h1', 'rook_end': 'f1',
-                'through_sq': 'f1', 'color': 'white',
+                'in_sq': 'e1', 'through_sq': 'f1', 'into_sq': 'g1',
+                'color': 'white',
                 'king_symbol': 'K', 'rook_symbol': 'R',
-                'path_squares': ['f1', 'g1']
+                'path_squares': ['f1', 'g1'],
+                'king_temp_moves': ['d1', 'f1'],
+                'rook_temp_moves': ['g1', 'f1'],
+                'question_text': 'Can white castle kingside?'
             },
             'white_queenside': {
                 'king_start': 'e1', 'king_end': 'c1',
                 'rook_start': 'a1', 'rook_end': 'd1',
-                'through_sq': 'd1', 'color': 'white',
+                'in_sq': 'e1', 'through_sq': 'd1', 'into_sq': 'c1',
+                'color': 'white',
                 'king_symbol': 'K', 'rook_symbol': 'R',
-                'path_squares': ['b1', 'c1', 'd1']
+                'path_squares': ['b1', 'c1', 'd1'],
+                'king_temp_moves': ['d1', 'f1'],
+                'rook_temp_moves': ['b1', 'c1'],
+                'question_text': 'Can white castle queenside?'
             },
             'black_kingside': {
                 'king_start': 'e8', 'king_end': 'g8',
                 'rook_start': 'h8', 'rook_end': 'f8',
-                'through_sq': 'f8', 'color': 'black',
+                'in_sq': 'e8', 'through_sq': 'f8', 'into_sq': 'g8',
+                'color': 'black',
                 'king_symbol': 'k', 'rook_symbol': 'r',
-                'path_squares': ['f8', 'g8']
+                'path_squares': ['f8', 'g8'],
+                'king_temp_moves': ['d8', 'f8'],
+                'rook_temp_moves': ['g8', 'f8'],
+                'question_text': 'Can black castle kingside?'
             },
             'black_queenside': {
                 'king_start': 'e8', 'king_end': 'c8',
                 'rook_start': 'a8', 'rook_end': 'd8',
-                'through_sq': 'd8', 'color': 'black',
+                'in_sq': 'e8', 'through_sq': 'd8', 'into_sq': 'c8',
+                'color': 'black',
                 'king_symbol': 'k', 'rook_symbol': 'r',
-                'path_squares': ['b8', 'c8', 'd8']
+                'path_squares': ['b8', 'c8', 'd8'],
+                'king_temp_moves': ['d8', 'f8'],
+                'rook_temp_moves': ['b8', 'c8'],
+                'question_text': 'Can black castle queenside?'
             }
         }
 
+        # Level 5 只测试2条规则（3选2）
         self.check_combinations = [
             ['in', 'through'],
             ['in', 'into'],
@@ -86,61 +105,55 @@ class Level5Generator:
         key = (piece_type, color)
         piece_counts[key] = piece_counts.get(key, 0) + 1
 
-    def _get_attacker_symbol(self, attacker_type: str, color: str) -> str:
+    def _get_piece_symbol(self, piece_type: str, color: str) -> str:
         symbols = {
             ('rook', 'white'): 'R', ('rook', 'black'): 'r',
             ('bishop', 'white'): 'B', ('bishop', 'black'): 'b',
             ('knight', 'white'): 'N', ('knight', 'black'): 'n',
-            ('queen', 'white'): 'Q', ('queen', 'black'): 'q'
+            ('queen', 'white'): 'Q', ('queen', 'black'): 'q',
+            ('pawn', 'white'): 'P', ('pawn', 'black'): 'p'
         }
-        return symbols.get((attacker_type, color), 'p')
+        return symbols.get((piece_type, color), 'p')
 
-    # ========== 新增：路径相关函数 ==========
+    def _symbol_to_type(self, symbol: str) -> str:
+        type_map = {
+            'R': 'rook', 'r': 'rook',
+            'B': 'bishop', 'b': 'bishop',
+            'N': 'knight', 'n': 'knight',
+            'Q': 'queen', 'q': 'queen',
+            'K': 'king', 'k': 'king',
+            'P': 'pawn', 'p': 'pawn'
+        }
+        return type_map.get(symbol, 'pawn')
 
     def _get_path_squares(self, from_sq: str, to_sq: str) -> List[str]:
-        """获取两点之间的所有格子（不包含端点）"""
         from_f, from_r = self._square_to_coords(from_sq)
         to_f, to_r = self._square_to_coords(to_sq)
-
-        df = to_f - from_f
-        dr = to_r - from_r
-
-        # 计算步进方向
+        df, dr = to_f - from_f, to_r - from_r
         step_f = 0 if df == 0 else (1 if df > 0 else -1)
         step_r = 0 if dr == 0 else (1 if dr > 0 else -1)
-
-        # 检查是否是有效的直线/对角线
         if not ((df == 0 and dr != 0) or (dr == 0 and df != 0) or (abs(df) == abs(dr) and df != 0)):
             return []
-
         path = []
         curr_f, curr_r = from_f + step_f, from_r + step_r
-
         while (curr_f, curr_r) != (to_f, to_r):
             sq = self._coords_to_square(curr_f, curr_r)
             if sq:
                 path.append(sq)
             curr_f += step_f
             curr_r += step_r
-
         return path
 
     def _is_path_clear(self, from_sq: str, to_sq: str, occupied: Set[str]) -> bool:
-        """检查路径是否畅通"""
-        path_squares = self._get_path_squares(from_sq, to_sq)
-        for sq in path_squares:
+        for sq in self._get_path_squares(from_sq, to_sq):
             if sq in occupied:
                 return False
         return True
 
     def _can_attack(self, from_sq: str, to_sq: str, piece_type: str) -> bool:
-        """检查棋子几何上是否能攻击目标（不考虑阻挡）"""
         from_f, from_r = self._square_to_coords(from_sq)
         to_f, to_r = self._square_to_coords(to_sq)
-
-        df = abs(to_f - from_f)
-        dr = abs(to_r - from_r)
-
+        df, dr = abs(to_f - from_f), abs(to_r - from_r)
         if piece_type == 'rook':
             return (df == 0 and dr > 0) or (dr == 0 and df > 0)
         elif piece_type == 'bishop':
@@ -153,290 +166,290 @@ class Level5Generator:
 
     def _can_attack_with_clear_path(self, from_sq: str, to_sq: str,
                                     piece_type: str, occupied: Set[str]) -> bool:
-        """检查棋子是否能攻击目标（考虑路径阻挡）"""
         if not self._can_attack(from_sq, to_sq, piece_type):
             return False
-        # 马不受阻挡
         if piece_type == 'knight':
             return True
         return self._is_path_clear(from_sq, to_sq, occupied)
 
-    def _get_attacker_positions_with_clear_path(self, target_sq: str, attacker_type: str,
-                                                forbidden: Set[str], occupied: Set[str]) -> List[str]:
-        """获取可以实际攻击目标的位置（路径畅通）"""
+    def _get_attacker_positions(self, target_sq: str, attacker_type: str,
+                                forbidden: Set[str], occupied: Set[str]) -> List[str]:
         target_f, target_r = self._square_to_coords(target_sq)
         positions = []
-
         if attacker_type in ['rook', 'queen']:
             for f in range(8):
                 if f != target_f:
                     sq = self._coords_to_square(f, target_r)
-                    if sq and sq not in forbidden:
-                        if self._is_path_clear(sq, target_sq, occupied):
-                            positions.append(sq)
+                    if sq and sq not in forbidden and self._is_path_clear(sq, target_sq, occupied):
+                        positions.append(sq)
             for r in range(8):
                 if r != target_r:
                     sq = self._coords_to_square(target_f, r)
-                    if sq and sq not in forbidden:
-                        if self._is_path_clear(sq, target_sq, occupied):
-                            positions.append(sq)
-
+                    if sq and sq not in forbidden and self._is_path_clear(sq, target_sq, occupied):
+                        positions.append(sq)
         if attacker_type in ['bishop', 'queen']:
             for d in range(1, 8):
                 for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
                     sq = self._coords_to_square(
                         target_f + df * d, target_r + dr * d)
-                    if sq and sq not in forbidden:
-                        if self._is_path_clear(sq, target_sq, occupied):
-                            positions.append(sq)
-
+                    if sq and sq not in forbidden and self._is_path_clear(sq, target_sq, occupied):
+                        positions.append(sq)
         if attacker_type == 'knight':
-            for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1),
-                           (1, 2), (1, -2), (-1, 2), (-1, -2)]:
+            for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
                 sq = self._coords_to_square(target_f + df, target_r + dr)
                 if sq and sq not in forbidden:
                     positions.append(sq)
-
         return positions
-
-    # ========== 新增：干扰棋子生成 ==========
-
-    def _place_blocked_attacker(self, target_sq: str, forbidden: Set[str],
-                                occupied: Set[str], piece_counts: Dict,
-                                attacker_color: str) -> Optional[Tuple[str, str, str, str]]:
-        """
-        放置一个"看似攻击但被阻挡"的棋子
-        返回: (attacker_sq, attacker_symbol, blocker_sq, blocker_symbol) 或 None
-        """
-        # 只用车、象、后（马不能被阻挡）
-        for _ in range(50):
-            attacker_type = random.choice(['rook', 'bishop', 'queen'])
-
-            if not self._can_add_piece(attacker_type, attacker_color, piece_counts):
-                continue
-
-            target_f, target_r = self._square_to_coords(target_sq)
-
-            # 找一个几何上能攻击但需要路径的位置
-            candidate_positions = []
-
-            if attacker_type in ['rook', 'queen']:
-                # 水平方向，距离 >= 2
-                for f in range(8):
-                    if abs(f - target_f) >= 2:
-                        sq = self._coords_to_square(f, target_r)
-                        if sq and sq not in forbidden and sq not in occupied:
-                            candidate_positions.append((sq, 'horizontal'))
-                # 垂直方向
-                for r in range(8):
-                    if abs(r - target_r) >= 2:
-                        sq = self._coords_to_square(target_f, r)
-                        if sq and sq not in forbidden and sq not in occupied:
-                            candidate_positions.append((sq, 'vertical'))
-
-            if attacker_type in ['bishop', 'queen']:
-                # 对角线方向，距离 >= 2
-                for d in range(2, 8):
-                    for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
-                        sq = self._coords_to_square(
-                            target_f + df * d, target_r + dr * d)
-                        if sq and sq not in forbidden and sq not in occupied:
-                            candidate_positions.append((sq, 'diagonal'))
-
-            if not candidate_positions:
-                continue
-
-            random.shuffle(candidate_positions)
-
-            for attacker_sq, direction in candidate_positions:
-                # 获取攻击路径上的格子
-                path = self._get_path_squares(attacker_sq, target_sq)
-                if not path:
-                    continue
-
-                # 选择一个路径上的格子放置阻挡棋子
-                valid_blocker_squares = [
-                    sq for sq in path if sq not in forbidden and sq not in occupied]
-                if not valid_blocker_squares:
-                    continue
-
-                blocker_sq = random.choice(valid_blocker_squares)
-
-                # 阻挡棋子可以是任意颜色的马或兵
-                blocker_color = random.choice(['white', 'black'])
-                blocker_type = random.choice(['knight', 'pawn'])
-
-                if not self._can_add_piece(blocker_type, blocker_color, piece_counts):
-                    blocker_type = 'pawn' if blocker_type == 'knight' else 'knight'
-                    if not self._can_add_piece(blocker_type, blocker_color, piece_counts):
-                        continue
-
-                attacker_symbol = self._get_attacker_symbol(
-                    attacker_type, attacker_color)
-                if blocker_type == 'knight':
-                    blocker_symbol = 'N' if blocker_color == 'white' else 'n'
-                else:
-                    blocker_symbol = 'P' if blocker_color == 'white' else 'p'
-
-                return (attacker_sq, attacker_symbol, blocker_sq, blocker_symbol,
-                        attacker_type, attacker_color, blocker_type, blocker_color)
-
-        return None
 
     def _get_non_attacking_square(self, critical_squares: List[str],
                                   forbidden: Set[str], piece_type: str,
                                   occupied: Set[str]) -> Optional[str]:
-        """获取一个不攻击任何关键格子的位置"""
         for _ in range(100):
             sq = self._random_square()
             if sq in forbidden:
                 continue
-
-            attacks_critical = False
-            for critical_sq in critical_squares:
-                if self._can_attack_with_clear_path(sq, critical_sq, piece_type, occupied):
-                    attacks_critical = True
+            attacks = False
+            for c_sq in critical_squares:
+                if self._can_attack_with_clear_path(sq, c_sq, piece_type, occupied):
+                    attacks = True
                     break
-
-            if not attacks_critical:
+            if not attacks:
                 return sq
         return None
 
-    # ========== 有效案例生成 ==========
+    def _get_knight_moves(self, square: str, forbidden: Set[str]) -> List[str]:
+        f, r = self._square_to_coords(square)
+        moves = []
+        for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
+            sq = self._coords_to_square(f + df, r + dr)
+            if sq and sq not in forbidden:
+                moves.append(sq)
+        return moves
 
-    def _generate_valid_case(self, case_num: int) -> Optional[Dict]:
-        """生成有效的易位案例（添加被阻挡的干扰攻击者）"""
+    def _get_legal_start_positions(self, end_sq: str, piece_type: str,
+                                   forbidden: Set[str], occupied: Set[str],
+                                   critical_squares: List[str]) -> List[str]:
+        """获取棋子能够合法移动到end_sq的所有起始位置"""
+        end_f, end_r = self._square_to_coords(end_sq)
+        positions = []
+
+        if piece_type == 'knight':
+            for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
+                sq = self._coords_to_square(end_f + df, end_r + dr)
+                if sq and sq not in forbidden:
+                    attacks_critical = False
+                    for c_sq in critical_squares:
+                        if self._can_attack(sq, c_sq, 'knight'):
+                            attacks_critical = True
+                            break
+                    if not attacks_critical:
+                        positions.append(sq)
+
+        elif piece_type == 'rook':
+            for f in range(8):
+                if f != end_f:
+                    sq = self._coords_to_square(f, end_r)
+                    if sq and sq not in forbidden:
+                        if self._is_path_clear(sq, end_sq, occupied):
+                            attacks_critical = False
+                            for c_sq in critical_squares:
+                                if self._can_attack_with_clear_path(sq, c_sq, 'rook', occupied):
+                                    attacks_critical = True
+                                    break
+                            if not attacks_critical:
+                                positions.append(sq)
+            for r in range(8):
+                if r != end_r:
+                    sq = self._coords_to_square(end_f, r)
+                    if sq and sq not in forbidden:
+                        if self._is_path_clear(sq, end_sq, occupied):
+                            attacks_critical = False
+                            for c_sq in critical_squares:
+                                if self._can_attack_with_clear_path(sq, c_sq, 'rook', occupied):
+                                    attacks_critical = True
+                                    break
+                            if not attacks_critical:
+                                positions.append(sq)
+
+        elif piece_type == 'bishop':
+            for d in range(1, 8):
+                for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
+                    sq = self._coords_to_square(end_f + df * d, end_r + dr * d)
+                    if sq and sq not in forbidden:
+                        if self._is_path_clear(sq, end_sq, occupied):
+                            attacks_critical = False
+                            for c_sq in critical_squares:
+                                if self._can_attack_with_clear_path(sq, c_sq, 'bishop', occupied):
+                                    attacks_critical = True
+                                    break
+                            if not attacks_critical:
+                                positions.append(sq)
+
+        elif piece_type == 'queen':
+            for f in range(8):
+                if f != end_f:
+                    sq = self._coords_to_square(f, end_r)
+                    if sq and sq not in forbidden:
+                        if self._is_path_clear(sq, end_sq, occupied):
+                            attacks_critical = False
+                            for c_sq in critical_squares:
+                                if self._can_attack_with_clear_path(sq, c_sq, 'queen', occupied):
+                                    attacks_critical = True
+                                    break
+                            if not attacks_critical:
+                                positions.append(sq)
+            for r in range(8):
+                if r != end_r:
+                    sq = self._coords_to_square(end_f, r)
+                    if sq and sq not in forbidden:
+                        if self._is_path_clear(sq, end_sq, occupied):
+                            attacks_critical = False
+                            for c_sq in critical_squares:
+                                if self._can_attack_with_clear_path(sq, c_sq, 'queen', occupied):
+                                    attacks_critical = True
+                                    break
+                            if not attacks_critical:
+                                positions.append(sq)
+            for d in range(1, 8):
+                for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
+                    sq = self._coords_to_square(end_f + df * d, end_r + dr * d)
+                    if sq and sq not in forbidden:
+                        if self._is_path_clear(sq, end_sq, occupied):
+                            attacks_critical = False
+                            for c_sq in critical_squares:
+                                if self._can_attack_with_clear_path(sq, c_sq, 'queen', occupied):
+                                    attacks_critical = True
+                                    break
+                            if not attacks_critical:
+                                positions.append(sq)
+
+        return positions
+
+    # ==================== VALID CASES ====================
+
+    def _generate_valid_case(self, case_num: int, check_combo: List[str]) -> Optional[Dict]:
+        """
+        Valid: 其他棋子移动，王车未动，且两条被测规则都满足
+        State 1: 初始（王车原位 + 其他棋子）
+        State 2: 其他棋子移动（王车不动）
+        State 3: 其他棋子再移动（王车仍不动）
+        Answer: Yes
+        """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
-        check_combo = random.choice(self.check_combinations)
 
         piece_counts = {}
         self._add_piece_to_counts('king', config['color'], piece_counts)
         self._add_piece_to_counts('rook', config['color'], piece_counts)
 
-        critical_squares = [config['king_start'],
-                            config['through_sq'], config['king_end']]
+        # 只需保护被测试的两个关键格
+        target_map = {
+            'in': config['in_sq'], 'through': config['through_sq'], 'into': config['into_sq']}
+        critical_squares = [target_map[rule] for rule in check_combo]
 
         occupied = {config['king_start'], config['rook_start']}
         path_squares = set(config['path_squares'])
         forbidden = occupied | path_squares
 
+        # 添加一个会移动的骑士
+        moving_piece_color = config['color']
+        knight_sq = self._get_non_attacking_square(
+            critical_squares, forbidden, 'knight', occupied)
+        if not knight_sq:
+            return None
+
+        knight_symbol = 'N' if moving_piece_color == 'white' else 'n'
+        self._add_piece_to_counts('knight', moving_piece_color, piece_counts)
+        forbidden.add(knight_sq)
+        occupied.add(knight_sq)
+
+        # 找骑士的移动目标
+        knight_moves = self._get_knight_moves(knight_sq, forbidden)
+        valid_knight_targets = []
+        for target in knight_moves:
+            test_occupied = (occupied - {knight_sq}) | {target}
+            attacks = False
+            for c_sq in critical_squares:
+                if self._can_attack_with_clear_path(target, c_sq, 'knight', test_occupied):
+                    attacks = True
+                    break
+            if not attacks:
+                valid_knight_targets.append(target)
+
+        if len(valid_knight_targets) < 2:
+            return None
+
+        knight_target_1 = valid_knight_targets[0]
+
+        forbidden_2 = forbidden | {knight_target_1}
+        knight_moves_2 = self._get_knight_moves(
+            knight_target_1, forbidden_2 - {knight_sq})
+        valid_knight_targets_2 = []
+        for target in knight_moves_2:
+            test_occupied = (occupied - {knight_sq}) | {target}
+            attacks = False
+            for c_sq in critical_squares:
+                if self._can_attack_with_clear_path(target, c_sq, 'knight', test_occupied):
+                    attacks = True
+                    break
+            if not attacks:
+                valid_knight_targets_2.append(target)
+
+        if not valid_knight_targets_2:
+            return None
+
+        knight_target_2 = random.choice(valid_knight_targets_2)
+
+        # 添加额外的静态棋子
         extra_pieces = {}
-        attacker_color = 'black' if config['color'] == 'white' else 'white'
-
-        # ===== 新增：添加 1-2 个"看似攻击但被阻挡"的干扰棋子 =====
-        n_blocked_attackers = random.randint(1, 2)
-        blocked_attacker_info = []
-
-        for _ in range(n_blocked_attackers):
-            # 选择一个关键格子作为"虚假目标"
-            fake_target = random.choice(critical_squares)
-
-            result = self._place_blocked_attacker(
-                fake_target, forbidden, occupied, piece_counts, attacker_color
-            )
-
-            if result:
-                (attacker_sq, attacker_symbol, blocker_sq, blocker_symbol,
-                 attacker_type, att_color, blocker_type, blk_color) = result
-
-                extra_pieces[attacker_sq] = attacker_symbol
-                extra_pieces[blocker_sq] = blocker_symbol
-                forbidden.add(attacker_sq)
-                forbidden.add(blocker_sq)
-                occupied.add(attacker_sq)
-                occupied.add(blocker_sq)
-                self._add_piece_to_counts(
-                    attacker_type, att_color, piece_counts)
-                self._add_piece_to_counts(
-                    blocker_type, blk_color, piece_counts)
-                blocked_attacker_info.append({
-                    'attacker': attacker_sq,
-                    'blocker': blocker_sq,
-                    'target': fake_target
-                })
-
-        # 添加一些普通的非攻击棋子填充
-        while len(extra_pieces) < 4:
+        for _ in range(random.randint(1, 2)):
             for _ in range(50):
-                piece_type = random.choice(['knight', 'bishop'])
-                piece_color = random.choice(['white', 'black'])
-
-                if not self._can_add_piece(piece_type, piece_color, piece_counts):
+                p_type = random.choice(['bishop', 'knight'])
+                p_color = random.choice(['white', 'black'])
+                if not self._can_add_piece(p_type, p_color, piece_counts):
                     continue
-
                 sq = self._get_non_attacking_square(
-                    critical_squares, forbidden, piece_type, occupied)
+                    critical_squares, forbidden, p_type, occupied)
                 if sq:
-                    symbol = self._get_attacker_symbol(piece_type, piece_color)
-                    extra_pieces[sq] = symbol
+                    extra_pieces[sq] = self._get_piece_symbol(p_type, p_color)
                     forbidden.add(sq)
                     occupied.add(sq)
-                    self._add_piece_to_counts(
-                        piece_type, piece_color, piece_counts)
+                    self._add_piece_to_counts(p_type, p_color, piece_counts)
                     break
-            else:
-                break
 
-        # 最终验证：确保没有棋子实际攻击关键格子
-        for sq, symbol in extra_pieces.items():
-            piece_type = self._symbol_to_type(symbol)
-            for critical_sq in critical_squares:
-                test_occupied = occupied - {sq}
-                if self._can_attack_with_clear_path(sq, critical_sq, piece_type, test_occupied):
-                    return None  # 验证失败
-
-        state1_pieces = {
+        base_pieces = {
             config['king_start']: config['king_symbol'],
             config['rook_start']: config['rook_symbol'],
             **extra_pieces
         }
 
-        state2_pieces = {
-            config['king_end']: config['king_symbol'],
-            config['rook_end']: config['rook_symbol'],
-            **extra_pieces
-        }
-
-        reasoning = "All castling conditions met"
-        if blocked_attacker_info:
-            blocked_desc = [f"piece at {info['attacker']} is blocked by {info['blocker']}"
-                            for info in blocked_attacker_info]
-            reasoning += f" (Note: {'; '.join(blocked_desc)})"
+        state1 = {**base_pieces, knight_sq: knight_symbol}
+        state2 = {**base_pieces, knight_target_1: knight_symbol}
+        state3 = {**base_pieces, knight_target_2: knight_symbol}
 
         return {
             "case_id": f"L5_valid_{case_num}",
-            "type": "castling_with_constraints",
-            "subtype": "valid",
+            "type": "castling_temporal",
+            "subtype": "valid_other_moved",
             "castling_type": castling_type,
             "check_rules_tested": check_combo,
-            "has_blocked_attackers": len(blocked_attacker_info) > 0,
+            "invalid_reason": None,
             "states": [
-                {"pieces": state1_pieces, "squares": []},
-                {"pieces": state2_pieces, "squares": []}
+                {"pieces": state1, "squares": []},
+                {"pieces": state2, "squares": []},
+                {"pieces": state3, "squares": []}
             ],
-            "question": "Is this castling move legal?",
+            "question": config['question_text'],
             "expected": "yes",
-            "reasoning": reasoning
+            "reasoning": f"King and rook have not moved; rules tested [{', '.join(check_combo)}] are satisfied"
         }
 
-    def _symbol_to_type(self, symbol: str) -> str:
-        """符号转棋子类型"""
-        type_map = {
-            'R': 'rook', 'r': 'rook',
-            'B': 'bishop', 'b': 'bishop',
-            'N': 'knight', 'n': 'knight',
-            'Q': 'queen', 'q': 'queen',
-            'K': 'king', 'k': 'king',
-            'P': 'pawn', 'p': 'pawn'
-        }
-        return type_map.get(symbol, 'pawn')
+    # ==================== INVALID: KING MOVED ====================
 
-    # ========== 无效案例生成 ==========
-
-    def _generate_invalid_case(self, case_num: int, check_combo: List[str],
-                               violation_type: str) -> Optional[Dict]:
-        """生成无效案例（真实攻击者 + 被阻挡的干扰攻击者）"""
+    def _generate_king_moved_case(self, case_num: int, check_combo: List[str]) -> Optional[Dict]:
+        """
+        Invalid: 王移动过再移回
+        """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
 
@@ -444,270 +457,392 @@ class Level5Generator:
         self._add_piece_to_counts('king', config['color'], piece_counts)
         self._add_piece_to_counts('rook', config['color'], piece_counts)
 
+        king_temp = random.choice(config['king_temp_moves'])
+
         occupied = {config['king_start'], config['rook_start']}
         path_squares = set(config['path_squares'])
-        forbidden = occupied | path_squares
+        forbidden = occupied | path_squares | {king_temp}
 
-        # 确定攻击目标
+        extra_pieces = {}
+        target_map = {
+            'in': config['in_sq'], 'through': config['through_sq'], 'into': config['into_sq']}
+        critical_squares = [target_map[rule] for rule in check_combo]
+
+        for _ in range(random.randint(1, 2)):
+            for _ in range(50):
+                p_type = random.choice(['bishop', 'knight'])
+                p_color = random.choice(['white', 'black'])
+                if not self._can_add_piece(p_type, p_color, piece_counts):
+                    continue
+                sq = self._get_non_attacking_square(
+                    critical_squares, forbidden, p_type, occupied)
+                if sq:
+                    extra_pieces[sq] = self._get_piece_symbol(p_type, p_color)
+                    forbidden.add(sq)
+                    occupied.add(sq)
+                    self._add_piece_to_counts(p_type, p_color, piece_counts)
+                    break
+
+        base_pieces = {config['rook_start']
+            : config['rook_symbol'], **extra_pieces}
+
+        state1 = {config['king_start']: config['king_symbol'], **base_pieces}
+        state2 = {king_temp: config['king_symbol'], **base_pieces}
+        state3 = {config['king_start']: config['king_symbol'], **base_pieces}
+
+        return {
+            "case_id": f"L5_king_moved_{case_num}",
+            "type": "castling_temporal",
+            "subtype": "invalid_king_moved",
+            "castling_type": castling_type,
+            "check_rules_tested": check_combo,
+            "invalid_reason": "king_moved",
+            "states": [
+                {"pieces": state1, "squares": []},
+                {"pieces": state2, "squares": []},
+                {"pieces": state3, "squares": []}
+            ],
+            "question": config['question_text'],
+            "expected": "no",
+            "reasoning": f"King moved from {config['king_start']} to {king_temp} and back; castling rights lost"
+        }
+
+    # ==================== INVALID: ROOK MOVED ====================
+
+    def _generate_rook_moved_case(self, case_num: int, check_combo: List[str]) -> Optional[Dict]:
+        """
+        Invalid: 车移动过再移回
+        """
+        castling_type = random.choice(list(self.castling_configs.keys()))
+        config = self.castling_configs[castling_type]
+
+        piece_counts = {}
+        self._add_piece_to_counts('king', config['color'], piece_counts)
+        self._add_piece_to_counts('rook', config['color'], piece_counts)
+
+        rook_temp = random.choice(config['rook_temp_moves'])
+
+        occupied = {config['king_start'], config['rook_start']}
+        path_squares = set(config['path_squares'])
+        forbidden = occupied | path_squares | {rook_temp}
+
+        extra_pieces = {}
+        target_map = {
+            'in': config['in_sq'], 'through': config['through_sq'], 'into': config['into_sq']}
+        critical_squares = [target_map[rule] for rule in check_combo]
+
+        for _ in range(random.randint(1, 2)):
+            for _ in range(50):
+                p_type = random.choice(['bishop', 'knight'])
+                p_color = random.choice(['white', 'black'])
+                if not self._can_add_piece(p_type, p_color, piece_counts):
+                    continue
+                sq = self._get_non_attacking_square(
+                    critical_squares, forbidden, p_type, occupied)
+                if sq:
+                    extra_pieces[sq] = self._get_piece_symbol(p_type, p_color)
+                    forbidden.add(sq)
+                    occupied.add(sq)
+                    self._add_piece_to_counts(p_type, p_color, piece_counts)
+                    break
+
+        base_pieces = {config['king_start']
+            : config['king_symbol'], **extra_pieces}
+
+        state1 = {config['rook_start']: config['rook_symbol'], **base_pieces}
+        state2 = {rook_temp: config['rook_symbol'], **base_pieces}
+        state3 = {config['rook_start']: config['rook_symbol'], **base_pieces}
+
+        return {
+            "case_id": f"L5_rook_moved_{case_num}",
+            "type": "castling_temporal",
+            "subtype": "invalid_rook_moved",
+            "castling_type": castling_type,
+            "check_rules_tested": check_combo,
+            "invalid_reason": "rook_moved",
+            "states": [
+                {"pieces": state1, "squares": []},
+                {"pieces": state2, "squares": []},
+                {"pieces": state3, "squares": []}
+            ],
+            "question": config['question_text'],
+            "expected": "no",
+            "reasoning": f"Rook moved from {config['rook_start']} to {rook_temp} and back; castling rights lost"
+        }
+
+    # ==================== INVALID: CHECK VIOLATION ====================
+
+    def _generate_check_violation_case(self, case_num: int, check_combo: List[str],
+                                       violation_type: str) -> Optional[Dict]:
+        """
+        Invalid: 对方棋子移动到攻击位置
+        violation_type: 'first' (违反第一条规则), 'second' (违反第二条), 'both' (两条都违反)
+        """
+        castling_type = random.choice(list(self.castling_configs.keys()))
+        config = self.castling_configs[castling_type]
+
+        piece_counts = {}
+        self._add_piece_to_counts('king', config['color'], piece_counts)
+        self._add_piece_to_counts('rook', config['color'], piece_counts)
+
+        target_map = {
+            'in': config['in_sq'], 'through': config['through_sq'], 'into': config['into_sq']}
+
+        # 确定要攻击的目标
         attack_targets = []
         violation_details = []
 
         if violation_type == 'first' or violation_type == 'both':
             rule = check_combo[0]
-            if rule == 'in':
-                attack_targets.append(config['king_start'])
-                violation_details.append('in_check')
-            elif rule == 'through':
-                attack_targets.append(config['through_sq'])
-                violation_details.append('through_check')
-            elif rule == 'into':
-                attack_targets.append(config['king_end'])
-                violation_details.append('into_check')
+            attack_targets.append(target_map[rule])
+            violation_details.append(f'{rule}_check')
 
         if violation_type == 'second' or violation_type == 'both':
             rule = check_combo[1]
-            if rule == 'in':
-                attack_targets.append(config['king_start'])
-                violation_details.append('in_check')
-            elif rule == 'through':
-                attack_targets.append(config['through_sq'])
-                violation_details.append('through_check')
-            elif rule == 'into':
-                attack_targets.append(config['king_end'])
-                violation_details.append('into_check')
+            attack_targets.append(target_map[rule])
+            violation_details.append(f'{rule}_check')
 
         attack_targets = list(set(attack_targets))
         violation_details = list(set(violation_details))
 
+        occupied = {config['king_start'], config['rook_start']}
+        path_squares = set(config['path_squares'])
+        forbidden = occupied | path_squares
+
         attacker_color = 'black' if config['color'] == 'white' else 'white'
+        critical_squares = [target_map[rule] for rule in check_combo]
 
         extra_pieces = {}
-        real_attacker_positions = {}  # 记录真实攻击者位置
+        attacker_info = []  # [(start, final, type, target)]
 
-        # ===== 放置真实攻击者 =====
-        for target in attack_targets:
+        # 为每个攻击目标放置攻击者
+        for target_sq in attack_targets:
+            attacker_types = ['rook', 'bishop', 'knight', 'queen']
+            random.shuffle(attacker_types)
+
             placed = False
-            for _ in range(50):
-                attacker_type = random.choice(
-                    ['rook', 'bishop', 'knight', 'queen'])
-
-                if not self._can_add_piece(attacker_type, attacker_color, piece_counts):
-                    continue
-
-                positions = self._get_attacker_positions_with_clear_path(
-                    target, attacker_type, forbidden, occupied
-                )
-                if positions:
-                    pos = random.choice(positions)
-                    symbol = self._get_attacker_symbol(
-                        attacker_type, attacker_color)
-                    extra_pieces[pos] = symbol
-                    real_attacker_positions[pos] = (target, attacker_type)
-                    forbidden.add(pos)
-                    occupied.add(pos)
-                    self._add_piece_to_counts(
-                        attacker_type, attacker_color, piece_counts)
-                    placed = True
+            for a_type in attacker_types:
+                if placed:
                     break
-
-            if not placed:
-                return None
-
-        # ===== 新增：添加 1-2 个"看似攻击但被阻挡"的干扰棋子 =====
-        # 选择一个没有被真实攻击的关键格子作为虚假目标
-        all_critical = [config['king_start'],
-                        config['through_sq'], config['king_end']]
-        non_targeted = [sq for sq in all_critical if sq not in attack_targets]
-
-        n_blocked_attackers = random.randint(1, 2)
-
-        for _ in range(n_blocked_attackers):
-            if not non_targeted:
-                break
-
-            fake_target = random.choice(non_targeted)
-
-            result = self._place_blocked_attacker(
-                fake_target, forbidden, occupied, piece_counts, attacker_color
-            )
-
-            if result:
-                (attacker_sq, attacker_symbol, blocker_sq, blocker_symbol,
-                 attacker_type, att_color, blocker_type, blk_color) = result
-
-                # 确保阻挡棋子不会阻挡真实攻击者的路径
-                blocks_real_attacker = False
-                for real_pos, (real_target, real_type) in real_attacker_positions.items():
-                    if real_type != 'knight':
-                        path = self._get_path_squares(real_pos, real_target)
-                        if blocker_sq in path or attacker_sq in path:
-                            blocks_real_attacker = True
-                            break
-
-                if not blocks_real_attacker:
-                    extra_pieces[attacker_sq] = attacker_symbol
-                    extra_pieces[blocker_sq] = blocker_symbol
-                    forbidden.add(attacker_sq)
-                    forbidden.add(blocker_sq)
-                    occupied.add(attacker_sq)
-                    occupied.add(blocker_sq)
-                    self._add_piece_to_counts(
-                        attacker_type, att_color, piece_counts)
-                    self._add_piece_to_counts(
-                        blocker_type, blk_color, piece_counts)
-
-        # 填充普通棋子
-        while len(extra_pieces) < 5:
-            placed = False
-            for _ in range(50):
-                piece_type = random.choice(['knight', 'bishop'])
-                piece_color = random.choice(['white', 'black'])
-
-                if not self._can_add_piece(piece_type, piece_color, piece_counts):
+                if not self._can_add_piece(a_type, attacker_color, piece_counts):
                     continue
 
-                non_target_critical = [
-                    sq for sq in all_critical if sq not in attack_targets]
-                sq = self._get_non_attacking_square(
-                    non_target_critical, forbidden, piece_type, occupied)
+                final_positions = self._get_attacker_positions(
+                    target_sq, a_type, forbidden, occupied)
+                if not final_positions:
+                    continue
 
-                if sq:
-                    # 确保不阻挡真实攻击者
-                    blocks_real = False
-                    for real_pos, (real_target, real_type) in real_attacker_positions.items():
-                        if real_type != 'knight':
-                            path = self._get_path_squares(
-                                real_pos, real_target)
-                            if sq in path:
-                                blocks_real = True
-                                break
+                random.shuffle(final_positions)
 
-                    if not blocks_real:
-                        symbol = self._get_attacker_symbol(
-                            piece_type, piece_color)
-                        extra_pieces[sq] = symbol
-                        forbidden.add(sq)
-                        occupied.add(sq)
+                for final_pos in final_positions:
+                    forbidden_for_start = forbidden | {final_pos}
+                    start_positions = self._get_legal_start_positions(
+                        final_pos, a_type, forbidden_for_start, occupied, critical_squares
+                    )
+
+                    if start_positions:
+                        attacker_start = random.choice(start_positions)
+                        attacker_final = final_pos
+
                         self._add_piece_to_counts(
-                            piece_type, piece_color, piece_counts)
+                            a_type, attacker_color, piece_counts)
+                        attacker_symbol = self._get_piece_symbol(
+                            a_type, attacker_color)
+
+                        attacker_info.append(
+                            (attacker_start, attacker_final, a_type, target_sq, attacker_symbol))
+                        forbidden.add(attacker_start)
+                        forbidden.add(attacker_final)
+                        occupied.add(attacker_start)
                         placed = True
                         break
 
             if not placed:
-                break
-
-        # 最终验证：确保真实攻击者仍然能攻击目标
-        for real_pos, (real_target, real_type) in real_attacker_positions.items():
-            test_occupied = occupied - {real_pos}
-            if not self._can_attack_with_clear_path(real_pos, real_target, real_type, test_occupied):
                 return None
 
-        state1_pieces = {
+        # 添加额外棋子（避开移动路径和攻击射线）
+        protected_squares = set()
+        for start, final, a_type, target, _ in attacker_info:
+            protected_squares |= set(self._get_path_squares(start, final))
+            if a_type != 'knight':
+                protected_squares |= set(self._get_path_squares(final, target))
+
+        non_targeted = [
+            sq for sq in critical_squares if sq not in attack_targets]
+
+        for _ in range(random.randint(1, 2)):
+            for _ in range(50):
+                p_type = random.choice(['bishop', 'knight'])
+                p_color = random.choice(['white', 'black'])
+                if not self._can_add_piece(p_type, p_color, piece_counts):
+                    continue
+                forbidden_extra = forbidden | protected_squares
+                sq = self._get_non_attacking_square(
+                    non_targeted, forbidden_extra, p_type, occupied)
+                if sq:
+                    extra_pieces[sq] = self._get_piece_symbol(p_type, p_color)
+                    forbidden.add(sq)
+                    occupied.add(sq)
+                    self._add_piece_to_counts(p_type, p_color, piece_counts)
+                    break
+
+        base_pieces = {
             config['king_start']: config['king_symbol'],
             config['rook_start']: config['rook_symbol'],
             **extra_pieces
         }
 
-        state2_pieces = {
-            config['king_end']: config['king_symbol'],
-            config['rook_end']: config['rook_symbol'],
-            **extra_pieces
-        }
+        # 构建states
+        state1_attackers = {info[0]: info[4] for info in attacker_info}
+        state2_attackers = {info[1]: info[4] for info in attacker_info}
 
-        reasoning = f"Violates: {', '.join(violation_details)}"
+        state1 = {**base_pieces, **state1_attackers}
+        state2 = {**base_pieces, **state2_attackers}
 
         return {
-            "case_id": f"L5_invalid_{case_num}",
-            "type": "castling_with_constraints",
-            "subtype": "invalid",
+            "case_id": f"L5_check_{case_num}",
+            "type": "castling_temporal",
+            "subtype": f"invalid_check_violation",
             "castling_type": castling_type,
             "check_rules_tested": check_combo,
-            "violation_details": violation_details,
+            "invalid_reason": violation_details,
             "states": [
-                {"pieces": state1_pieces, "squares": []},
-                {"pieces": state2_pieces, "squares": []}
+                {"pieces": state1, "squares": []},
+                {"pieces": state2, "squares": []}
             ],
-            "question": "Is this castling move legal?",
+            "question": config['question_text'],
             "expected": "no",
-            "reasoning": reasoning
+            "reasoning": f"Violates: {', '.join(violation_details)}"
         }
 
-    def generate_all(self, n_cases: int = 100) -> List[Dict]:
+    # ==================== GENERATE ALL ====================
+
+    def generate_all(self, n_cases: int = 100, valid_ratio: float = 0.20) -> List[Dict]:
         """生成所有 Level 5 测试案例"""
         all_cases = []
 
-        n_valid = int(n_cases * 0.20)
+        n_valid = int(n_cases * valid_ratio)
         n_invalid = n_cases - n_valid
 
-        print(f"Generating valid castling cases (with blocked attackers as distractors)...")
+        # 分配无效案例
+        # 40% 时序违规（王/车移动过），60% check违规
+        n_temporal = int(n_invalid * 0.4)
+        n_check = n_invalid - n_temporal
 
-        valid_generated = 0
-        valid_attempts = 0
-        max_valid_attempts = n_valid * 10
+        n_king_moved = n_temporal // 2
+        n_rook_moved = n_temporal - n_king_moved
 
-        while valid_generated < n_valid and valid_attempts < max_valid_attempts:
-            valid_attempts += 1
-            case = self._generate_valid_case(valid_generated + 1)
+        # Check违规按规则组合分配
+        n_check_per_combo = n_check // 3
+        n_check_remainder = n_check % 3
+
+        # ========== Valid cases ==========
+        print(f"Generating {n_valid} VALID cases...")
+        valid_gen = 0
+        combo_idx = 0
+        for _ in range(n_valid * 10):
+            if valid_gen >= n_valid:
+                break
+            check_combo = self.check_combinations[combo_idx % 3]
+            combo_idx += 1
+            case = self._generate_valid_case(valid_gen + 1, check_combo)
             if case:
                 all_cases.append(case)
-                valid_generated += 1
+                valid_gen += 1
+        print(f"  ✓ Generated {valid_gen} valid cases")
 
-        print(f"  ✓ Generated {valid_generated} valid cases")
+        # ========== Invalid: King moved ==========
+        print(f"Generating {n_king_moved} INVALID cases (king moved)...")
+        king_gen = 0
+        combo_idx = 0
+        for _ in range(n_king_moved * 10):
+            if king_gen >= n_king_moved:
+                break
+            check_combo = self.check_combinations[combo_idx % 3]
+            combo_idx += 1
+            case = self._generate_king_moved_case(king_gen + 1, check_combo)
+            if case:
+                all_cases.append(case)
+                king_gen += 1
+        print(f"  ✓ Generated {king_gen} king-moved cases")
 
-        print(f"Generating invalid castling cases...")
+        # ========== Invalid: Rook moved ==========
+        print(f"Generating {n_rook_moved} INVALID cases (rook moved)...")
+        rook_gen = 0
+        combo_idx = 0
+        for _ in range(n_rook_moved * 10):
+            if rook_gen >= n_rook_moved:
+                break
+            check_combo = self.check_combinations[combo_idx % 3]
+            combo_idx += 1
+            case = self._generate_rook_moved_case(rook_gen + 1, check_combo)
+            if case:
+                all_cases.append(case)
+                rook_gen += 1
+        print(f"  ✓ Generated {rook_gen} rook-moved cases")
 
-        cases_per_combo = n_invalid // 3
-        remainder = n_invalid % 3
+        # ========== Invalid: Check violations ==========
+        print(f"Generating check violation cases...")
+        check_gen = 0
 
-        invalid_count = 0
         for combo_idx, check_combo in enumerate(self.check_combinations):
-            n_combo_cases = cases_per_combo + \
-                (1 if combo_idx < remainder else 0)
-
-            n_first = n_combo_cases // 3
-            n_second = n_combo_cases // 3
-            n_both = n_combo_cases - n_first - n_second
+            n_combo = n_check_per_combo + \
+                (1 if combo_idx < n_check_remainder else 0)
+            n_first = n_combo // 3
+            n_second = n_combo // 3
+            n_both = n_combo - n_first - n_second
 
             combo_name = f"[{check_combo[0]}, {check_combo[1]}]"
 
-            for i in range(n_first):
-                for _ in range(10):
-                    case = self._generate_invalid_case(
-                        invalid_count + 1, check_combo, 'first')
-                    if case:
-                        all_cases.append(case)
-                        invalid_count += 1
+            # Violate first rule
+            for _ in range(n_first * 10):
+                if check_gen >= n_check:
+                    break
+                case = self._generate_check_violation_case(
+                    check_gen + 1, check_combo, 'first')
+                if case:
+                    all_cases.append(case)
+                    check_gen += 1
+                    if len([c for c in all_cases if c.get('check_rules_tested') == check_combo and
+                            c.get('invalid_reason') and 'first' in str(c.get('invalid_reason', []))]) >= n_first:
                         break
 
-            for i in range(n_second):
-                for _ in range(10):
-                    case = self._generate_invalid_case(
-                        invalid_count + 1, check_combo, 'second')
-                    if case:
-                        all_cases.append(case)
-                        invalid_count += 1
+            # Violate second rule
+            for _ in range(n_second * 10):
+                if check_gen >= n_check:
+                    break
+                case = self._generate_check_violation_case(
+                    check_gen + 1, check_combo, 'second')
+                if case:
+                    all_cases.append(case)
+                    check_gen += 1
+                    if len([c for c in all_cases if c.get('check_rules_tested') == check_combo and
+                            c.get('subtype') == 'invalid_check_violation']) >= n_first + n_second:
                         break
 
-            for i in range(n_both):
-                for _ in range(10):
-                    case = self._generate_invalid_case(
-                        invalid_count + 1, check_combo, 'both')
-                    if case:
-                        all_cases.append(case)
-                        invalid_count += 1
-                        break
+            # Violate both rules
+            for _ in range(n_both * 10):
+                if check_gen >= n_check:
+                    break
+                case = self._generate_check_violation_case(
+                    check_gen + 1, check_combo, 'both')
+                if case:
+                    all_cases.append(case)
+                    check_gen += 1
 
             print(f"  ✓ Generated cases for combo {combo_name}")
 
-        # 统计有多少案例包含被阻挡的攻击者
-        n_with_blocked = sum(1 for c in all_cases if c.get(
-            'has_blocked_attackers', False))
+        # ========== Shuffle ==========
+        random.shuffle(all_cases)
+
+        # ========== Stats ==========
+        stats = defaultdict(int)
+        for case in all_cases:
+            stats[case['subtype']] += 1
 
         print(f"\n✓ Total generated: {len(all_cases)} Level 5 test cases")
-        print(
-            f"  Valid: {valid_generated} ({valid_generated/len(all_cases)*100:.1f}%)")
-        print(
-            f"  Invalid: {invalid_count} ({invalid_count/len(all_cases)*100:.1f}%)")
-        print(f"  With blocked attackers (distractors): {n_with_blocked}")
+        print(f"  Breakdown:")
+        for subtype, count in sorted(stats.items()):
+            print(f"    {subtype}: {count} ({count/len(all_cases)*100:.1f}%)")
 
         return all_cases
