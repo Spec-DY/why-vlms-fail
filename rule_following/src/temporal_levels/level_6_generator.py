@@ -1,10 +1,10 @@
 """
 Level 6 Generator: Castling + Temporal History + Check Rules
-测试王车易位的时序规则：
-1. 王/车是否移动过（即使移回原位也不能易位）
-2. 三条Check约束（in/through/into）
+Tests temporal rules for castling:
+1. Whether king/rook has moved (cannot castle even if moved back to original position)
+2. Three Check constraints (in/through/into)
 
-预测性问题：给定历史状态序列，问能否进行易位
+Predictive question: Given historical state sequence, ask if castling is possible
 """
 
 import random
@@ -36,8 +36,10 @@ class Level6Generator:
                 'color': 'white',
                 'king_symbol': 'K', 'rook_symbol': 'R',
                 'path_squares': ['f1', 'g1'],
-                'king_temp_moves': ['d1', 'f1'],  # 王可以临时移动到的格子
-                'rook_temp_moves': ['g1', 'f1'],  # 车可以临时移动到的格子
+                # Squares king can temporarily move to
+                'king_temp_moves': ['d1', 'f1'],
+                # Squares rook can temporarily move to
+                'rook_temp_moves': ['g1', 'f1'],
                 'question_text': 'Can white castle kingside?'
             },
             'white_queenside': {
@@ -211,7 +213,7 @@ class Level6Generator:
         return None
 
     def _get_knight_moves(self, square: str, forbidden: Set[str]) -> List[str]:
-        """获取骑士从某格可以移动到的所有格子"""
+        """Get all squares a knight can move to from a given square"""
         f, r = self._square_to_coords(square)
         moves = []
         for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
@@ -224,22 +226,22 @@ class Level6Generator:
                                    forbidden: Set[str], occupied: Set[str],
                                    critical_squares: List[str]) -> List[str]:
         """
-        获取棋子能够合法移动到end_sq的所有起始位置
-        要求：
-        1. 从起始位置到end_sq的移动符合该棋子的移动规则
-        2. 移动路径畅通（骑士除外）
-        3. 起始位置不在forbidden中
-        4. 从起始位置不能攻击任何关键格（确保初始状态是安全的）
+        Get all starting positions where a piece can legally move to end_sq
+        Requirements:
+        1. The move from start to end_sq follows the piece's movement rules
+        2. Movement path is clear (except for knight)
+        3. Start position is not in forbidden
+        4. From start position, cannot attack any critical square (ensures initial state is safe)
         """
         end_f, end_r = self._square_to_coords(end_sq)
         positions = []
 
         if piece_type == 'knight':
-            # 骑士：L形移动，可以跳过棋子
+            # Knight: L-shape movement, can jump over pieces
             for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
                 sq = self._coords_to_square(end_f + df, end_r + dr)
                 if sq and sq not in forbidden:
-                    # 检查从这个位置是否能攻击关键格
+                    # Check if this position can attack critical squares
                     attacks_critical = False
                     for c_sq in critical_squares:
                         if self._can_attack(sq, c_sq, 'knight'):
@@ -249,15 +251,15 @@ class Level6Generator:
                         positions.append(sq)
 
         elif piece_type == 'rook':
-            # 车：沿直线移动
-            # 水平方向
+            # Rook: moves along straight lines
+            # Horizontal direction
             for f in range(8):
                 if f != end_f:
                     sq = self._coords_to_square(f, end_r)
                     if sq and sq not in forbidden:
-                        # 检查路径是否畅通
+                        # Check if path is clear
                         if self._is_path_clear(sq, end_sq, occupied):
-                            # 检查从这个位置是否能攻击关键格
+                            # Check if this position can attack critical squares
                             attacks_critical = False
                             for c_sq in critical_squares:
                                 if self._can_attack_with_clear_path(sq, c_sq, 'rook', occupied):
@@ -265,7 +267,7 @@ class Level6Generator:
                                     break
                             if not attacks_critical:
                                 positions.append(sq)
-            # 垂直方向
+            # Vertical direction
             for r in range(8):
                 if r != end_r:
                     sq = self._coords_to_square(end_f, r)
@@ -280,7 +282,7 @@ class Level6Generator:
                                 positions.append(sq)
 
         elif piece_type == 'bishop':
-            # 象：沿对角线移动
+            # Bishop: moves along diagonals
             for d in range(1, 8):
                 for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
                     sq = self._coords_to_square(end_f + df * d, end_r + dr * d)
@@ -295,8 +297,8 @@ class Level6Generator:
                                 positions.append(sq)
 
         elif piece_type == 'queen':
-            # 后：沿直线或对角线移动
-            # 水平
+            # Queen: moves along straight lines or diagonals
+            # Horizontal
             for f in range(8):
                 if f != end_f:
                     sq = self._coords_to_square(f, end_r)
@@ -309,7 +311,7 @@ class Level6Generator:
                                     break
                             if not attacks_critical:
                                 positions.append(sq)
-            # 垂直
+            # Vertical
             for r in range(8):
                 if r != end_r:
                     sq = self._coords_to_square(end_f, r)
@@ -322,7 +324,7 @@ class Level6Generator:
                                     break
                             if not attacks_critical:
                                 positions.append(sq)
-            # 对角线
+            # Diagonal
             for d in range(1, 8):
                 for df, dr in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
                     sq = self._coords_to_square(end_f + df * d, end_r + dr * d)
@@ -342,10 +344,10 @@ class Level6Generator:
 
     def _generate_valid_case(self, case_num: int) -> Optional[Dict]:
         """
-        Valid: 其他棋子移动，王车未动
-        State 1: 初始（王车原位 + 其他棋子）
-        State 2: 其他棋子移动（王车不动）
-        State 3: 其他棋子再移动（王车仍不动）
+        Valid: Other pieces moved, king/rook haven't moved
+        State 1: Initial (king/rook in place + other pieces)
+        State 2: Other pieces move (king/rook don't move)
+        State 3: Other pieces move again (king/rook still don't move)
         Answer: Yes
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
@@ -362,8 +364,8 @@ class Level6Generator:
         path_squares = set(config['path_squares'])
         forbidden = occupied | path_squares
 
-        # 添加一个会移动的骑士（不攻击关键格）
-        moving_piece_color = config['color']  # 同色棋子移动
+        # Add a moving knight (doesn't attack critical squares)
+        moving_piece_color = config['color']  # Same color piece moves
 
         knight_sq = self._get_non_attacking_square(
             critical_squares, forbidden, 'knight', occupied
@@ -376,7 +378,7 @@ class Level6Generator:
         forbidden.add(knight_sq)
         occupied.add(knight_sq)
 
-        # 找骑士的移动目标（也不能攻击关键格）
+        # Find knight move targets (also can't attack critical squares)
         knight_moves = self._get_knight_moves(knight_sq, forbidden)
         valid_knight_targets = []
         for target in knight_moves:
@@ -394,7 +396,7 @@ class Level6Generator:
 
         knight_target_1 = valid_knight_targets[0]
 
-        # 从target_1再找一个移动目标
+        # Find another move target from target_1
         forbidden_2 = forbidden | {knight_target_1}
         knight_moves_2 = self._get_knight_moves(
             knight_target_1, forbidden_2 - {knight_sq})
@@ -414,7 +416,7 @@ class Level6Generator:
 
         knight_target_2 = random.choice(valid_knight_targets_2)
 
-        # 添加额外的静态棋子
+        # Add extra static pieces
         extra_pieces = {}
         for _ in range(random.randint(1, 2)):
             for _ in range(50):
@@ -431,7 +433,7 @@ class Level6Generator:
                     self._add_piece_to_counts(p_type, p_color, piece_counts)
                     break
 
-        # 构建3个states
+        # Build 3 states
         base_pieces = {
             config['king_start']: config['king_symbol'],
             config['rook_start']: config['rook_symbol'],
@@ -462,11 +464,11 @@ class Level6Generator:
 
     def _generate_king_moved_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 王移动过再移回
-        State 1: 王在原位
-        State 2: 王移动到临时位置
-        State 3: 王移回原位
-        Answer: No (王已移动过)
+        Invalid: King moved and moved back
+        State 1: King at original position
+        State 2: King moves to temporary position
+        State 3: King moves back to original position
+        Answer: No (king has moved)
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
@@ -475,14 +477,14 @@ class Level6Generator:
         self._add_piece_to_counts('king', config['color'], piece_counts)
         self._add_piece_to_counts('rook', config['color'], piece_counts)
 
-        # 王的临时移动位置
+        # King's temporary move position
         king_temp = random.choice(config['king_temp_moves'])
 
         occupied = {config['king_start'], config['rook_start']}
         path_squares = set(config['path_squares'])
         forbidden = occupied | path_squares | {king_temp}
 
-        # 添加额外棋子
+        # Add extra pieces
         extra_pieces = {}
         critical_squares = [config['in_sq'],
                             config['through_sq'], config['into_sq']]
@@ -531,11 +533,11 @@ class Level6Generator:
 
     def _generate_rook_moved_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 车移动过再移回
-        State 1: 车在原位
-        State 2: 车移动到临时位置
-        State 3: 车移回原位
-        Answer: No (车已移动过)
+        Invalid: Rook moved and moved back
+        State 1: Rook at original position
+        State 2: Rook moves to temporary position
+        State 3: Rook moves back to original position
+        Answer: No (rook has moved)
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
@@ -544,7 +546,7 @@ class Level6Generator:
         self._add_piece_to_counts('king', config['color'], piece_counts)
         self._add_piece_to_counts('rook', config['color'], piece_counts)
 
-        # 车的临时移动位置
+        # Rook's temporary move position
         rook_temp = random.choice(config['rook_temp_moves'])
 
         occupied = {config['king_start'], config['rook_start']}
@@ -599,12 +601,12 @@ class Level6Generator:
 
     def _generate_check_violation_case(self, case_num: int, violation_type: str) -> Optional[Dict]:
         """
-        Invalid: 对方棋子移动到攻击位置
-        State 1: 初始（无威胁）
-        State 2: 对方棋子移动到攻击关键格的位置
-        Answer: No (违反check规则)
+        Invalid: Enemy piece moves to attacking position
+        State 1: Initial (no threat)
+        State 2: Enemy piece moves to position attacking critical square
+        Answer: No (violates check rule)
 
-        关键：攻击者从初始位置到最终位置的移动必须符合棋子规则
+        Key: Attacker's move from start to final position must follow piece movement rules
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
@@ -628,7 +630,7 @@ class Level6Generator:
         critical_squares = [config['in_sq'],
                             config['through_sq'], config['into_sq']]
 
-        # 尝试不同的攻击者类型
+        # Try different attacker types
         attacker_types = ['rook', 'bishop', 'knight', 'queen']
         random.shuffle(attacker_types)
 
@@ -640,7 +642,7 @@ class Level6Generator:
             if not self._can_add_piece(a_type, attacker_color, piece_counts):
                 continue
 
-            # 找攻击者的最终位置（能攻击目标格）
+            # Find attacker's final position (can attack target square)
             final_positions = self._get_attacker_positions(
                 target_sq, a_type, forbidden, occupied)
             if not final_positions:
@@ -649,7 +651,7 @@ class Level6Generator:
             random.shuffle(final_positions)
 
             for final_pos in final_positions:
-                # 找合法的起始位置（能移动到final_pos，且不攻击关键格）
+                # Find legal start position (can move to final_pos, and doesn't attack critical squares)
                 forbidden_for_start = forbidden | {final_pos}
                 start_positions = self._get_legal_start_positions(
                     final_pos, a_type, forbidden_for_start, occupied, critical_squares
@@ -673,23 +675,23 @@ class Level6Generator:
         forbidden.add(attacker_final)
         occupied.add(attacker_start)
 
-        # 添加额外棋子（确保不阻挡攻击者的移动路径和攻击射线）
+        # Add extra pieces (ensure they don't block attacker's movement path and attack line)
         extra_pieces = {}
         non_targeted = [sq for sq in critical_squares if sq != target_sq]
 
-        # 获取攻击者的移动路径（Start → Final）
+        # Get attacker's movement path (Start -> Final)
         attacker_move_path = set(self._get_path_squares(
             attacker_start, attacker_final))
 
-        # 获取攻击者的攻击射线（Final → Target）
-        # 骑士不需要，因为骑士攻击不会被阻挡
+        # Get attacker's attack line (Final -> Target)
+        # Knight doesn't need this because knight attacks can't be blocked
         if attacker_type != 'knight':
             attacker_fire_line = set(
                 self._get_path_squares(attacker_final, target_sq))
         else:
             attacker_fire_line = set()
 
-        # 合并所有需要保护的路径
+        # Merge all paths that need protection
         protected_squares = attacker_move_path | attacker_fire_line
 
         for _ in range(random.randint(1, 2)):
@@ -699,7 +701,7 @@ class Level6Generator:
                 if not self._can_add_piece(p_type, p_color, piece_counts):
                     continue
 
-                # 不能放在攻击者的移动路径或攻击射线上
+                # Cannot place on attacker's movement path or attack line
                 forbidden_extra = forbidden | protected_squares
                 sq = self._get_non_attacking_square(
                     non_targeted, forbidden_extra, p_type, occupied)
@@ -740,14 +742,14 @@ class Level6Generator:
     # ==================== GENERATE ALL ====================
 
     def generate_all(self, n_cases: int = 100, valid_ratio: float = 0.20) -> List[Dict]:
-        """生成所有 Level 6 测试案例"""
+        """Generate all Level 6 test cases"""
         all_cases = []
 
         n_valid = int(n_cases * valid_ratio)
         n_invalid = n_cases - n_valid
 
-        # 分配无效案例类型
-        # 50% 时序违规（王/车移动过），50% check违规
+        # Distribute invalid case types
+        # 50% temporal violations (king/rook moved), 50% check violations
         n_temporal = n_invalid // 2
         n_check = n_invalid - n_temporal
 

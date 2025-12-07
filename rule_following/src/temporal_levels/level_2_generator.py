@@ -1,11 +1,11 @@
 """
 Level 2 Generator: Path Blocked Capture (Temporal Version)
-测试路径阻挡的时序变化：
-- 阻挡棋子移开 → 路径打开 → 可以吃
-- 阻挡棋子移动但仍阻挡 → 不能吃
-- 新棋子移入路径 → 不能吃
+Tests temporal changes in path blocking:
+- Blocking piece moves away -> Path opens -> Can capture
+- Blocking piece moves but still blocks -> Cannot capture
+- New piece moves into path -> Cannot capture
 
-预测性问题：给定历史状态序列，问能否进行吃子
+Predictive question: Given historical state sequence, ask if capture is possible
 """
 
 import random
@@ -49,18 +49,18 @@ class Level2Generator:
         return 'black' if color == 'white' else 'white'
 
     def _get_path_squares(self, start: str, end: str) -> List[str]:
-        """获取两点之间的所有格子（不包含端点）"""
+        """Get all squares between two points (excluding endpoints)"""
         start_f, start_r = self._square_to_coords(start)
         end_f, end_r = self._square_to_coords(end)
 
         df = end_f - start_f
         dr = end_r - start_r
 
-        # 确定方向
+        # Determine direction
         step_f = 0 if df == 0 else (1 if df > 0 else -1)
         step_r = 0 if dr == 0 else (1 if dr > 0 else -1)
 
-        # 验证是直线或对角线
+        # Verify it's a straight line or diagonal
         if not ((df == 0 and dr != 0) or (dr == 0 and df != 0) or (abs(df) == abs(dr) and df != 0)):
             return []
 
@@ -77,7 +77,7 @@ class Level2Generator:
         return path
 
     def _is_valid_move_for_piece(self, start: str, end: str, piece_type: str) -> bool:
-        """检查移动是否符合棋子规则"""
+        """Check if move follows piece rules"""
         start_f, start_r = self._square_to_coords(start)
         end_f, end_r = self._square_to_coords(end)
 
@@ -95,7 +95,7 @@ class Level2Generator:
         return False
 
     def _get_knight_moves(self, square: str, forbidden: Set[str]) -> List[str]:
-        """获取骑士的所有合法移动目标"""
+        """Get all legal knight move targets"""
         f, r = self._square_to_coords(square)
         moves = []
         for df, dr in [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]:
@@ -105,11 +105,11 @@ class Level2Generator:
         return moves
 
     def _get_rook_moves(self, square: str, forbidden: Set[str], occupied: Set[str]) -> List[str]:
-        """获取车的所有合法移动目标（考虑阻挡）"""
+        """Get all legal rook move targets (considering blocking)"""
         f, r = self._square_to_coords(square)
         moves = []
 
-        # 四个方向
+        # Four directions
         for df, dr in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
             for dist in range(1, 8):
                 sq = self._coords_to_square(f + df * dist, r + dr * dist)
@@ -124,7 +124,7 @@ class Level2Generator:
         return moves
 
     def _get_bishop_moves(self, square: str, forbidden: Set[str], occupied: Set[str]) -> List[str]:
-        """获取象的所有合法移动目标（考虑阻挡）"""
+        """Get all legal bishop move targets (considering blocking)"""
         f, r = self._square_to_coords(square)
         moves = []
 
@@ -142,16 +142,17 @@ class Level2Generator:
         return moves
 
     def _generate_attack_setup(self, piece_type: str) -> Optional[Dict]:
-        """生成攻击者和目标的基本设置"""
+        """Generate basic setup for attacker and target"""
         for _ in range(100):
             attacker_sq = self._random_square()
             attacker_f, attacker_r = self._square_to_coords(attacker_sq)
 
-            # 根据棋子类型生成目标位置
+            # Generate target position based on piece type
             if piece_type == 'rook':
-                # 直线移动
+                # Straight line move
                 move_type = random.choice(['horizontal', 'vertical'])
-                distance = random.randint(4, 6)  # 需要足够距离放阻挡棋子
+                # Need enough distance for blocking piece
+                distance = random.randint(4, 6)
                 direction = random.choice([-1, 1])
 
                 if move_type == 'horizontal':
@@ -162,7 +163,7 @@ class Level2Generator:
                     target_r = attacker_r + direction * distance
 
             elif piece_type == 'bishop':
-                # 对角线移动
+                # Diagonal move
                 distance = random.randint(4, 6)
                 dir_f = random.choice([-1, 1])
                 dir_r = random.choice([-1, 1])
@@ -192,7 +193,7 @@ class Level2Generator:
                 target_sq = self._coords_to_square(target_f, target_r)
                 path = self._get_path_squares(attacker_sq, target_sq)
 
-                if len(path) >= 2:  # 需要至少2个中间格子
+                if len(path) >= 2:  # Need at least 2 intermediate squares
                     return {
                         'attacker_sq': attacker_sq,
                         'target_sq': target_sq,
@@ -205,9 +206,9 @@ class Level2Generator:
 
     def _generate_path_cleared_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Valid: 阻挡棋子移开，路径打开
-        State 1: 阻挡棋子在路径上
-        State 2: 阻挡棋子移开（骑士跳走）
+        Valid: Blocking piece moves away, path opens
+        State 1: Blocking piece on path
+        State 2: Blocking piece moves away (knight jumps away)
         Answer: Yes
         """
         setup = self._generate_attack_setup(piece_type)
@@ -222,12 +223,12 @@ class Level2Generator:
         target_color = self._get_opposite_color(attacker_color)
         blocker_color = random.choice(['white', 'black'])
 
-        # 选择路径上的一个位置放置阻挡骑士
+        # Choose a position on path to place blocking knight
         blocker_start = random.choice(path)
 
         forbidden = {attacker_sq, target_sq, blocker_start}
 
-        # 找骑士可以跳到的位置（离开路径）
+        # Find positions knight can jump to (away from path)
         knight_moves = self._get_knight_moves(blocker_start, forbidden)
         valid_moves = [sq for sq in knight_moves if sq not in path]
 
@@ -273,9 +274,9 @@ class Level2Generator:
 
     def _generate_still_blocked_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 阻挡棋子移动但仍在路径上
-        State 1: 阻挡棋子在路径位置A
-        State 2: 阻挡棋子移动到路径位置B（仍阻挡）
+        Invalid: Blocking piece moves but still on path
+        State 1: Blocking piece at path position A
+        State 2: Blocking piece moves to path position B (still blocks)
         Answer: No
         """
         setup = self._generate_attack_setup(piece_type)
@@ -293,21 +294,21 @@ class Level2Generator:
         target_color = self._get_opposite_color(attacker_color)
         blocker_color = random.choice(['white', 'black'])
 
-        # 选择路径上两个不同的位置
+        # Choose two different positions on path
         blocker_positions = random.sample(path, 2)
         blocker_start = blocker_positions[0]
         blocker_end = blocker_positions[1]
 
-        # 使用 Queen 作为阻挡棋子（可以沿直线和对角线移动）
-        # 这样可以覆盖 Rook（直线路径）和 Bishop（对角线路径）的情况
+        # Use Queen as blocking piece (can move along straight and diagonal lines)
+        # This covers both Rook (straight path) and Bishop (diagonal path) cases
         forbidden = {attacker_sq, target_sq}
         occupied = {attacker_sq, target_sq}
 
-        # 验证 Queen 是否能从 blocker_start 合法移动到 blocker_end
+        # Verify Queen can legally move from blocker_start to blocker_end
         if not self._is_valid_move_for_piece(blocker_start, blocker_end, 'queen'):
             return None
 
-        # 检查移动路径是否畅通
+        # Check if move path is clear
         move_path = self._get_path_squares(blocker_start, blocker_end)
         for sq in move_path:
             if sq in occupied:
@@ -315,7 +316,8 @@ class Level2Generator:
 
         attacker_symbol = self._piece_symbol(piece_type, attacker_color)
         target_symbol = self._piece_symbol('pawn', target_color)
-        blocker_symbol = self._piece_symbol('queen', blocker_color)  # 改为 Queen
+        blocker_symbol = self._piece_symbol(
+            'queen', blocker_color)  # Changed to Queen
 
         state1 = {
             attacker_sq: attacker_symbol,
@@ -350,9 +352,9 @@ class Level2Generator:
 
     def _generate_path_blocked_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 棋子移入路径，阻挡了原本畅通的路径
-        State 1: 路径畅通，棋子在路径外
-        State 2: 棋子移入路径
+        Invalid: Piece moves into path, blocking originally clear path
+        State 1: Path clear, piece outside path
+        State 2: Piece moves into path
         Answer: No
         """
         setup = self._generate_attack_setup(piece_type)
@@ -367,13 +369,13 @@ class Level2Generator:
         target_color = self._get_opposite_color(attacker_color)
         blocker_color = random.choice(['white', 'black'])
 
-        # 选择路径上的一个目标位置
+        # Choose a target position on path
         blocker_end = random.choice(path)
 
         forbidden = {attacker_sq, target_sq, blocker_end} | set(path)
 
-        # 找骑士可以从路径外跳入的位置
-        # 反向查找：从blocker_end找所有能跳到这里的位置
+        # Find positions knight can jump from (outside path into path)
+        # Reverse search: from blocker_end find all positions that can jump here
         end_f, end_r = self._square_to_coords(blocker_end)
         possible_starts = []
 
@@ -424,16 +426,16 @@ class Level2Generator:
 
     def _generate_invalid_pattern_case(self, piece_type: str, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 攻击者移动模式错误
-        例如：车走对角线，象走直线
+        Invalid: Attacker movement pattern is wrong
+        Example: Rook moves diagonally, Bishop moves straight
         """
         for _ in range(100):
             attacker_sq = self._random_square()
             attacker_f, attacker_r = self._square_to_coords(attacker_sq)
 
-            # 生成错误的移动模式
+            # Generate wrong movement pattern
             if piece_type == 'rook':
-                # 车走对角线（错误）
+                # Rook moves diagonally (wrong)
                 distance = random.randint(2, 4)
                 dir_f = random.choice([-1, 1])
                 dir_r = random.choice([-1, 1])
@@ -442,7 +444,7 @@ class Level2Generator:
                 error_desc = "Rook cannot move diagonally"
 
             elif piece_type == 'bishop':
-                # 象走直线（错误）
+                # Bishop moves straight (wrong)
                 move_type = random.choice(['horizontal', 'vertical'])
                 distance = random.randint(2, 4)
                 direction = random.choice([-1, 1])
@@ -455,7 +457,7 @@ class Level2Generator:
                 error_desc = "Bishop cannot move in straight line"
 
             else:  # queen
-                # 后走L形（错误）
+                # Queen moves in L-shape (wrong)
                 l_moves = [(2, 1), (2, -1), (-2, 1), (-2, -1),
                            (1, 2), (1, -2), (-1, 2), (-1, -2)]
                 df, dr = random.choice(l_moves)
@@ -469,7 +471,7 @@ class Level2Generator:
                 attacker_color = random.choice(['white', 'black'])
                 target_color = self._get_opposite_color(attacker_color)
 
-                # 添加一个不相关的棋子增加复杂度
+                # Add an unrelated piece to increase complexity
                 forbidden = {attacker_sq, target_sq}
                 extra_sq = None
                 for _ in range(50):
@@ -496,7 +498,7 @@ class Level2Generator:
                     extra_color = random.choice(['white', 'black'])
                     extra_symbol = self._piece_symbol('knight', extra_color)
 
-                    # 让额外棋子移动一下
+                    # Let extra piece move
                     extra_moves = self._get_knight_moves(extra_sq, forbidden)
                     if extra_moves:
                         extra_end = random.choice(extra_moves)
@@ -525,17 +527,17 @@ class Level2Generator:
     # ==================== GENERATE ALL ====================
 
     def generate_all(self, n_cases: int = 90) -> List[Dict]:
-        """生成所有 Level 2 测试案例"""
+        """Generate all Level 2 test cases"""
         all_cases = []
 
-        # 每种棋子类型的案例数
+        # Number of cases per piece type
         cases_per_piece = n_cases // 3
         remainder = n_cases % 3
 
         for idx, piece_type in enumerate(self.piece_types):
             n_piece_cases = cases_per_piece + (1 if idx < remainder else 0)
 
-            # 分配: 25% valid, 75% invalid (25% still_blocked, 25% path_blocked, 25% invalid_pattern)
+            # Distribution: 25% valid, 75% invalid (25% still_blocked, 25% path_blocked, 25% invalid_pattern)
             n_valid = n_piece_cases // 4
             n_still_blocked = n_piece_cases // 4
             n_path_blocked = n_piece_cases // 4
@@ -591,10 +593,10 @@ class Level2Generator:
                     invalid_count += 1
             print(f"  ✓ Generated {invalid_count} invalid_pattern cases")
 
-        # 打乱顺序
+        # Shuffle order
         random.shuffle(all_cases)
 
-        # 统计
+        # Statistics
         stats = defaultdict(int)
         for case in all_cases:
             stats[case['subtype']] += 1

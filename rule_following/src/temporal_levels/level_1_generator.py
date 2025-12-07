@@ -1,8 +1,8 @@
 """
 Level 1 Generator: Basic Movement Rules
-预测性版本：只展示当前状态，问能否移动到目标位置
-- 不直接展示移动结果
-- 模型需要推理棋子能否到达目标
+Predictive version: Only shows current state, asks if piece can move to target position
+- Does not directly show movement result
+- Model needs to reason whether piece can reach target
 """
 
 import random
@@ -164,11 +164,11 @@ class Level1Generator:
     # ==================== CASE GENERATION ====================
 
     def _generate_case(self, piece_type: str, is_valid: bool, case_num: int) -> Optional[Dict]:
-        """生成单个测试用例 - 预测性版本"""
+        """Generate a single test case - predictive version"""
         color = random.choice(['white', 'black'])
 
         for _ in range(100):
-            # 为pawn选择合适的起始位置
+            # Choose appropriate starting position for pawn
             if piece_type == 'pawn':
                 file = random.choice(self.files)
                 if color == 'white':
@@ -179,7 +179,7 @@ class Level1Generator:
             else:
                 start = self._random_square()
 
-            # 生成目标位置
+            # Generate target position
             if is_valid:
                 if piece_type == 'knight':
                     target = self._generate_valid_knight_target(start)
@@ -231,7 +231,7 @@ class Level1Generator:
         }
 
     def _get_reasoning(self, piece_type: str, start: str, target: str, is_valid: bool) -> str:
-        """生成推理说明"""
+        """Generate reasoning explanation"""
         if is_valid:
             patterns = {
                 'knight': f"Valid L-shape move from {start} to {target}",
@@ -253,7 +253,7 @@ class Level1Generator:
         return patterns.get(piece_type, "Movement pattern check")
 
     def generate_all(self, n_cases: int = 100) -> List[Dict]:
-        """生成所有 Level 1 预测性测试用例"""
+        """Generate all Level 1 predictive test cases"""
         all_cases = []
 
         cases_per_piece = n_cases // 6

@@ -1,10 +1,10 @@
 """
 Level 5 Generator: Castling + Temporal History + 2 Check Rules
-测试王车易位的时序规则：
-1. 王/车是否移动过（即使移回原位也不能易位）
-2. 两条Check约束（从in/through/into中选2条）
+Tests temporal rules for castling:
+1. Whether king/rook has moved (cannot castle even if moved back to original position)
+2. Two Check constraints (select 2 from in/through/into)
 
-预测性问题：给定历史状态序列，问能否进行易位
+Predictive question: Given historical state sequence, ask if castling is possible
 """
 
 import random
@@ -75,7 +75,7 @@ class Level5Generator:
             }
         }
 
-        # Level 5 只测试2条规则（3选2）
+        # Level 5 only tests 2 rules (choose 2 from 3)
         self.check_combinations = [
             ['in', 'through'],
             ['in', 'into'],
@@ -229,7 +229,7 @@ class Level5Generator:
     def _get_legal_start_positions(self, end_sq: str, piece_type: str,
                                    forbidden: Set[str], occupied: Set[str],
                                    critical_squares: List[str]) -> List[str]:
-        """获取棋子能够合法移动到end_sq的所有起始位置"""
+        """Get all starting positions where a piece can legally move to end_sq"""
         end_f, end_r = self._square_to_coords(end_sq)
         positions = []
 
@@ -329,10 +329,10 @@ class Level5Generator:
 
     def _generate_valid_case(self, case_num: int, check_combo: List[str]) -> Optional[Dict]:
         """
-        Valid: 其他棋子移动，王车未动，且两条被测规则都满足
-        State 1: 初始（王车原位 + 其他棋子）
-        State 2: 其他棋子移动（王车不动）
-        State 3: 其他棋子再移动（王车仍不动）
+        Valid: Other pieces moved, king/rook haven't moved, and both tested rules are satisfied
+        State 1: Initial (king/rook in place + other pieces)
+        State 2: Other pieces move (king/rook don't move)
+        State 3: Other pieces move again (king/rook still don't move)
         Answer: Yes
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
@@ -342,7 +342,7 @@ class Level5Generator:
         self._add_piece_to_counts('king', config['color'], piece_counts)
         self._add_piece_to_counts('rook', config['color'], piece_counts)
 
-        # 只需保护被测试的两个关键格
+        # Only need to protect the two critical squares being tested
         target_map = {
             'in': config['in_sq'], 'through': config['through_sq'], 'into': config['into_sq']}
         critical_squares = [target_map[rule] for rule in check_combo]
@@ -351,7 +351,7 @@ class Level5Generator:
         path_squares = set(config['path_squares'])
         forbidden = occupied | path_squares
 
-        # 添加一个会移动的骑士
+        # Add a moving knight
         moving_piece_color = config['color']
         knight_sq = self._get_non_attacking_square(
             critical_squares, forbidden, 'knight', occupied)
@@ -363,7 +363,7 @@ class Level5Generator:
         forbidden.add(knight_sq)
         occupied.add(knight_sq)
 
-        # 找骑士的移动目标
+        # Find knight move targets
         knight_moves = self._get_knight_moves(knight_sq, forbidden)
         valid_knight_targets = []
         for target in knight_moves:
@@ -400,7 +400,7 @@ class Level5Generator:
 
         knight_target_2 = random.choice(valid_knight_targets_2)
 
-        # 添加额外的静态棋子
+        # Add extra static pieces
         extra_pieces = {}
         for _ in range(random.randint(1, 2)):
             for _ in range(50):
@@ -448,7 +448,7 @@ class Level5Generator:
 
     def _generate_king_moved_case(self, case_num: int, check_combo: List[str]) -> Optional[Dict]:
         """
-        Invalid: 王移动过再移回
+        Invalid: King moved and moved back
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
@@ -483,8 +483,7 @@ class Level5Generator:
                     self._add_piece_to_counts(p_type, p_color, piece_counts)
                     break
 
-        base_pieces = {config['rook_start']
-            : config['rook_symbol'], **extra_pieces}
+        base_pieces = {config['rook_start']                       : config['rook_symbol'], **extra_pieces}
 
         state1 = {config['king_start']: config['king_symbol'], **base_pieces}
         state2 = {king_temp: config['king_symbol'], **base_pieces}
@@ -511,7 +510,7 @@ class Level5Generator:
 
     def _generate_rook_moved_case(self, case_num: int, check_combo: List[str]) -> Optional[Dict]:
         """
-        Invalid: 车移动过再移回
+        Invalid: Rook moved and moved back
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
@@ -546,8 +545,7 @@ class Level5Generator:
                     self._add_piece_to_counts(p_type, p_color, piece_counts)
                     break
 
-        base_pieces = {config['king_start']
-            : config['king_symbol'], **extra_pieces}
+        base_pieces = {config['king_start']                       : config['king_symbol'], **extra_pieces}
 
         state1 = {config['rook_start']: config['rook_symbol'], **base_pieces}
         state2 = {rook_temp: config['rook_symbol'], **base_pieces}
@@ -575,8 +573,8 @@ class Level5Generator:
     def _generate_check_violation_case(self, case_num: int, check_combo: List[str],
                                        violation_type: str) -> Optional[Dict]:
         """
-        Invalid: 对方棋子移动到攻击位置
-        violation_type: 'first' (违反第一条规则), 'second' (违反第二条), 'both' (两条都违反)
+        Invalid: Enemy piece moves to attacking position
+        violation_type: 'first' (violates first rule), 'second' (violates second), 'both' (violates both)
         """
         castling_type = random.choice(list(self.castling_configs.keys()))
         config = self.castling_configs[castling_type]
@@ -588,7 +586,7 @@ class Level5Generator:
         target_map = {
             'in': config['in_sq'], 'through': config['through_sq'], 'into': config['into_sq']}
 
-        # 确定要攻击的目标
+        # Determine attack targets
         attack_targets = []
         violation_details = []
 
@@ -615,7 +613,7 @@ class Level5Generator:
         extra_pieces = {}
         attacker_info = []  # [(start, final, type, target)]
 
-        # 为每个攻击目标放置攻击者
+        # Place attacker for each attack target
         for target_sq in attack_targets:
             attacker_types = ['rook', 'bishop', 'knight', 'queen']
             random.shuffle(attacker_types)
@@ -660,7 +658,7 @@ class Level5Generator:
             if not placed:
                 return None
 
-        # 添加额外棋子（避开移动路径和攻击射线）
+        # Add extra pieces (avoid blocking attacker movement path and attack line)
         protected_squares = set()
         for start, final, a_type, target, _ in attacker_info:
             protected_squares |= set(self._get_path_squares(start, final))
@@ -692,7 +690,7 @@ class Level5Generator:
             **extra_pieces
         }
 
-        # 构建states
+        # Build states
         state1_attackers = {info[0]: info[4] for info in attacker_info}
         state2_attackers = {info[1]: info[4] for info in attacker_info}
 
@@ -718,21 +716,21 @@ class Level5Generator:
     # ==================== GENERATE ALL ====================
 
     def generate_all(self, n_cases: int = 100, valid_ratio: float = 0.20) -> List[Dict]:
-        """生成所有 Level 5 测试案例"""
+        """Generate all Level 5 test cases"""
         all_cases = []
 
         n_valid = int(n_cases * valid_ratio)
         n_invalid = n_cases - n_valid
 
-        # 分配无效案例
-        # 40% 时序违规（王/车移动过），60% check违规
+        # Distribute invalid cases
+        # 40% temporal violations (king/rook moved), 60% check violations
         n_temporal = int(n_invalid * 0.4)
         n_check = n_invalid - n_temporal
 
         n_king_moved = n_temporal // 2
         n_rook_moved = n_temporal - n_king_moved
 
-        # Check违规按规则组合分配
+        # Check violations distributed by rule combination
         n_check_per_combo = n_check // 3
         n_check_remainder = n_check % 3
 

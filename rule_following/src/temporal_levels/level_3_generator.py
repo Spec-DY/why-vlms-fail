@@ -1,13 +1,13 @@
 """
 Level 3 Generator: En Passant Basic (Temporal Version)
-测试吃过路兵的3个基本条件：
-1. 被吃的兵从起始位置出发
-2. 被吃的兵双步移动
-3. 两个兵相邻
+Tests the 3 basic conditions for en passant capture:
+1. The captured pawn starts from its initial position
+2. The captured pawn makes a double-step move
+3. The two pawns are adjacent
 
-增加时序追踪要素：
-- 干扰棋子移动
-- 多个兵的混淆
+Added temporal tracking elements:
+- Distractor piece movements
+- Multiple pawn confusion
 """
 
 import random
@@ -34,7 +34,7 @@ class Level3Generator:
         return adjacent
 
     def _get_knight_moves(self, square: str, forbidden: Set[str]) -> List[str]:
-        """获取骑士的所有合法移动目标"""
+        """Get all legal knight move targets"""
         f = ord(square[0]) - ord('a')
         r = int(square[1]) - 1
         moves = []
@@ -47,13 +47,13 @@ class Level3Generator:
         return moves
 
     def _get_safe_knight_position(self, forbidden: Set[str]) -> Optional[str]:
-        """找一个安全的骑士位置"""
+        """Find a safe knight position"""
         for _ in range(100):
             f = random.choice(self.files)
             r = random.choice(self.ranks)
             sq = f + r
             if sq not in forbidden:
-                # 确保骑士有地方可以移动
+                # Ensure knight has somewhere to move
                 moves = self._get_knight_moves(sq, forbidden)
                 if moves:
                     return sq
@@ -63,31 +63,31 @@ class Level3Generator:
 
     def _generate_valid_case(self, case_num: int) -> Optional[Dict]:
         """
-        Valid: 所有条件满足，带干扰骑士
-        State 1: 白兵在位，黑兵在起始位置，白骑士在某处
-        State 2: 白骑士移动（白方走棋）
-        State 3: 黑兵双步移动（黑方走棋）
-        Answer: Yes（轮到白方，可以吃过路兵）
+        Valid: All conditions met, with distractor knight
+        State 1: White pawn in position, black pawn at starting position, white knight somewhere
+        State 2: White knight moves (white's turn)
+        State 3: Black pawn double-steps (black's turn)
+        Answer: Yes (white's turn, can capture en passant)
 
-        修复：
-        1. 保护过路兵目标格（Rank 6）
-        2. 强制使用白骑士，确保走子顺序正确（白→黑→白问）
+        Fixes:
+        1. Protect en passant target square (Rank 6)
+        2. Force use of white knight to ensure correct move order (white -> black -> white asks)
         """
         black_file = random.choice(['b', 'c', 'd', 'e', 'f', 'g'])
         black_start = black_file + '7'
         black_end = black_file + '5'
 
-        # 修复1：计算过路兵落点（Rank 6）
+        # Fix 1: Calculate en passant landing square (Rank 6)
         ep_target_sq = black_file + '6'
 
         adjacent = self._adjacent_files(black_file)
         white_file = random.choice(adjacent)
         white_sq = white_file + '5'
 
-        # 修复2：将落点加入禁区
+        # Fix 2: Add landing square to forbidden
         forbidden = {white_sq, black_start, black_end, ep_target_sq}
 
-        # 修复3：强制使用白骑士，确保走子顺序：白骑士移动 → 黑兵移动 → 轮到白方
+        # Fix 3: Force use of white knight to ensure move order: white knight moves -> black pawn moves -> white's turn to ask
         knight_symbol = 'N'
 
         knight_start = self._get_safe_knight_position(forbidden)
@@ -137,18 +137,20 @@ class Level3Generator:
 
     def _generate_not_from_start_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 黑兵不是从起始位置出发
-        State 1: 黑兵在rank 6（不是7），白骑士在某处
-        State 2: 白骑士移动
-        State 3: 黑兵移动到rank 5
-        Answer: No（不是从起始位置双步移动）
+        Invalid: Black pawn not from starting position
+        State 1: Black pawn at rank 6 (not 7), white knight somewhere
+        State 2: White knight moves
+        State 3: Black pawn moves to rank 5
+        Answer: No (not a double-step from starting position)
         """
         black_file = random.choice(['b', 'c', 'd', 'e', 'f', 'g'])
-        black_start = black_file + '6'  # 从第6行开始（不是起始位置）
+        # Starting from rank 6 (not starting position)
+        black_start = black_file + '6'
         black_end = black_file + '5'
 
-        # 虽然无效，但仍保护目标格
-        ep_target_sq = black_file + '6'  # 注意：这里和black_start重合，但概念上是目标格
+        # Although invalid, still protect target square
+        # Note: overlaps with black_start, but conceptually is the target square
+        ep_target_sq = black_file + '6'
 
         adjacent = self._adjacent_files(black_file)
         white_file = random.choice(adjacent)
@@ -156,7 +158,7 @@ class Level3Generator:
 
         forbidden = {white_sq, black_start, black_end}
 
-        # 使用白骑士确保走子顺序正确
+        # Use white knight to ensure correct move order
         knight_symbol = 'N'
 
         knight_start = self._get_safe_knight_position(forbidden)
@@ -206,27 +208,27 @@ class Level3Generator:
 
     def _generate_moved_one_square_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 黑兵只移动了1格
-        State 1: 黑兵在rank 7，白骑士在某处
-        State 2: 白骑士移动
-        State 3: 黑兵只移动到rank 6（不是5）
-        Answer: No（只移动了1格）
+        Invalid: Black pawn only moved 1 square
+        State 1: Black pawn at rank 7, white knight somewhere
+        State 2: White knight moves
+        State 3: Black pawn only moves to rank 6 (not 5)
+        Answer: No (only moved 1 square)
         """
         black_file = random.choice(['b', 'c', 'd', 'e', 'f', 'g'])
         black_start = black_file + '7'
-        black_end = black_file + '6'  # 只移动1格
+        black_end = black_file + '6'  # Only moved 1 square
 
-        # 保护目标格（虽然这里是无效案例）
+        # Protect target square (although this is an invalid case)
         ep_target_sq = black_file + '6'
 
         adjacent = self._adjacent_files(black_file)
         white_file = random.choice(adjacent)
         white_sq = white_file + '5'
 
-        # black_end 和 ep_target_sq 重合，所以forbidden包含它就行
+        # black_end and ep_target_sq overlap, so forbidden includes it
         forbidden = {white_sq, black_start, black_end}
 
-        # 使用白骑士
+        # Use white knight
         knight_symbol = 'N'
 
         knight_start = self._get_safe_knight_position(forbidden)
@@ -276,20 +278,20 @@ class Level3Generator:
 
     def _generate_not_adjacent_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 白兵和黑兵不相邻
-        State 1: 黑兵在rank 7，白兵在不相邻的列，白骑士在某处
-        State 2: 白骑士移动
-        State 3: 黑兵双步移动
-        Answer: No（不相邻）
+        Invalid: White pawn and black pawn not adjacent
+        State 1: Black pawn at rank 7, white pawn on non-adjacent file, white knight somewhere
+        State 2: White knight moves
+        State 3: Black pawn double-steps
+        Answer: No (not adjacent)
         """
         black_file = random.choice(['a', 'b', 'c', 'd'])
         black_start = black_file + '7'
         black_end = black_file + '5'
 
-        # 保护目标格
+        # Protect target square
         ep_target_sq = black_file + '6'
 
-        # 选择不相邻的列
+        # Choose non-adjacent file
         black_file_idx = self.files.index(black_file)
         non_adjacent = [f for i, f in enumerate(
             self.files) if abs(i - black_file_idx) >= 2]
@@ -302,7 +304,7 @@ class Level3Generator:
 
         forbidden = {white_sq, black_start, black_end, ep_target_sq}
 
-        # 使用白骑士
+        # Use white knight
         knight_symbol = 'N'
 
         knight_start = self._get_safe_knight_position(forbidden)
@@ -352,16 +354,16 @@ class Level3Generator:
 
     def _generate_multi_pawn_confusion_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 多个兵混淆 - 双步移动的兵和被询问的兵不是同一个
+        Invalid: Multiple pawn confusion - the pawn that double-stepped and the pawn being asked about are different
 
-        修复走子顺序：
-        State 1: 黑兵A已在c5（暗示历史上双步移动过，但那是"之前"的事），黑兵B在e6，白骑士在某处
-        State 2: 白骑士移动（白方走棋）
-        State 3: 黑兵B移动到e5（黑方走棋，只移动1格）
+        Fixed move order:
+        State 1: Black pawn A already at c5 (implies historical double-step, but that was "before"), black pawn B at e6, white knight somewhere
+        State 2: White knight moves (white's turn)
+        State 3: Black pawn B moves to e5 (black's turn, only moves 1 square)
 
-        问：能否吃黑兵B（在e5）？→ No（黑兵B只移动了1格）
+        Question: Can capture black pawn B (at e5)? -> No (black pawn B only moved 1 square)
 
-        注意：虽然兵A之前双步移动过，但由于已经过了很多步，吃兵A的权利早已过期
+        Note: Although pawn A double-stepped before, that right has already expired since many moves have passed
         """
         white_file = random.choice(['c', 'd', 'e', 'f'])
         white_sq = white_file + '5'
@@ -370,25 +372,25 @@ class Level3Generator:
         if len(adjacent) < 2:
             return None
 
-        # 黑兵A：已经在c5（历史上双步移动过，但权利已过期）
+        # Black pawn A: already at c5 (historically double-stepped, but right expired)
         pawn_a_file = adjacent[0]
-        pawn_a_sq = pawn_a_file + '5'  # 已经在第5行
+        pawn_a_sq = pawn_a_file + '5'  # Already at rank 5
 
-        # 黑兵A的目标格（如果要吃的话），需要保护
+        # Black pawn A's target square (if capturing), needs protection
         ep_target_a = pawn_a_file + '6'
 
-        # 黑兵B：从e6移动到e5（只移动1格，这个我们要问）
+        # Black pawn B: moves from e6 to e5 (only 1 square, this is what we ask about)
         pawn_b_file = adjacent[1]
         pawn_b_start = pawn_b_file + '6'
         pawn_b_end = pawn_b_file + '5'
 
-        # 黑兵B的目标格
-        ep_target_b = pawn_b_file + '6'  # 和pawn_b_start重合
+        # Black pawn B's target square
+        ep_target_b = pawn_b_file + '6'  # Overlaps with pawn_b_start
 
         forbidden = {white_sq, pawn_a_sq,
                      pawn_b_start, pawn_b_end, ep_target_a}
 
-        # 白骑士
+        # White knight
         knight_symbol = 'N'
         knight_start = self._get_safe_knight_position(forbidden)
         if not knight_start:
@@ -440,15 +442,15 @@ class Level3Generator:
 
     def _generate_wrong_pawn_case(self, case_num: int) -> Optional[Dict]:
         """
-        Invalid: 问的是没有刚刚双步移动的那个兵
+        Invalid: Asking about the pawn that didn't just double-step
 
-        State 1: 白兵在d5，黑兵A在c7，黑兵B在e5（早已在那里），白骑士
-        State 2: 白骑士移动（白方走棋）
-        State 3: 黑兵A双步移动到c5（黑方走棋）
+        State 1: White pawn at d5, black pawn A at c7, black pawn B at e5 (already there), white knight
+        State 2: White knight moves (white's turn)
+        State 3: Black pawn A double-steps to c5 (black's turn)
 
-        问：能否吃黑兵B（在e5）？→ No（黑兵B不是刚刚双步移动的）
+        Question: Can capture black pawn B (at e5)? -> No (black pawn B didn't just double-step)
 
-        走子顺序：白方 → 黑方 → 轮到白方提问
+        Move order: white -> black -> white's turn to ask
         """
         white_file = random.choice(['c', 'd', 'e', 'f'])
         white_sq = white_file + '5'
@@ -457,13 +459,13 @@ class Level3Generator:
         if len(adjacent) < 2:
             return None
 
-        # 黑兵A：双步移动（这个刚刚移动，可以被吃，但我们不问这个）
+        # Black pawn A: double-steps (this one just moved, can be captured, but we don't ask about this one)
         pawn_a_file = adjacent[0]
         pawn_a_start = pawn_a_file + '7'
         pawn_a_end = pawn_a_file + '5'
         ep_target_a = pawn_a_file + '6'
 
-        # 黑兵B：早已在e5（我们问这个，答案是No）
+        # Black pawn B: already at e5 (we ask about this one, answer is No)
         pawn_b_file = adjacent[1]
         pawn_b_sq = pawn_b_file + '5'
         ep_target_b = pawn_b_file + '6'
@@ -471,7 +473,7 @@ class Level3Generator:
         forbidden = {white_sq, pawn_a_start, pawn_a_end,
                      pawn_b_sq, ep_target_a, ep_target_b}
 
-        # 白骑士
+        # White knight
         knight_symbol = 'N'
 
         knight_start = self._get_safe_knight_position(forbidden)
@@ -524,13 +526,13 @@ class Level3Generator:
 
     def _generate_correct_pawn_case(self, case_num: int) -> Optional[Dict]:
         """
-        Valid: 有多个兵，但问的是正确的那个（刚刚双步移动的）
+        Valid: Multiple pawns present, but asking about the correct one (the one that just double-stepped)
 
-        State 1: 白兵在d5，黑兵A在c7，黑兵B在e5（早已在那里），白骑士
-        State 2: 白骑士移动（白方走棋）
-        State 3: 黑兵A双步移动到c5（黑方走棋）
+        State 1: White pawn at d5, black pawn A at c7, black pawn B at e5 (already there), white knight
+        State 2: White knight moves (white's turn)
+        State 3: Black pawn A double-steps to c5 (black's turn)
 
-        问：能否吃黑兵A（在c5）？→ Yes（黑兵A刚刚双步移动）
+        Question: Can capture black pawn A (at c5)? -> Yes (black pawn A just double-stepped)
         """
         white_file = random.choice(['c', 'd', 'e', 'f'])
         white_sq = white_file + '5'
@@ -539,13 +541,13 @@ class Level3Generator:
         if len(adjacent) < 2:
             return None
 
-        # 黑兵A：双步移动（我们问这个，答案是Yes）
+        # Black pawn A: double-steps (we ask about this one, answer is Yes)
         pawn_a_file = adjacent[0]
         pawn_a_start = pawn_a_file + '7'
         pawn_a_end = pawn_a_file + '5'
         ep_target_a = pawn_a_file + '6'
 
-        # 黑兵B：早已在e5（干扰）
+        # Black pawn B: already at e5 (distractor)
         pawn_b_file = adjacent[1]
         pawn_b_sq = pawn_b_file + '5'
         ep_target_b = pawn_b_file + '6'
@@ -553,7 +555,7 @@ class Level3Generator:
         forbidden = {white_sq, pawn_a_start, pawn_a_end,
                      pawn_b_sq, ep_target_a, ep_target_b}
 
-        # 白骑士
+        # White knight
         knight_symbol = 'N'
 
         knight_start = self._get_safe_knight_position(forbidden)
@@ -605,17 +607,17 @@ class Level3Generator:
     # ==================== GENERATE ALL ====================
 
     def generate_all(self, n_cases: int = 100) -> List[Dict]:
-        """生成所有 Level 3 测试案例"""
+        """Generate all Level 3 test cases"""
         all_cases = []
 
-        # 分配比例
+        # Distribution ratio
         # Valid: 30% (basic valid + correct pawn identified)
         # Invalid: 70%
         n_valid_basic = int(n_cases * 0.15)
         n_valid_correct = int(n_cases * 0.15)
         n_invalid = n_cases - n_valid_basic - n_valid_correct
 
-        # Invalid 分配
+        # Invalid distribution
         n_not_from_start = n_invalid // 5
         n_one_square = n_invalid // 5
         n_not_adjacent = n_invalid // 5
@@ -703,10 +705,10 @@ class Level3Generator:
                 wrong_count += 1
         print(f"  ✓ Generated {wrong_count} wrong_pawn_asked cases")
 
-        # 打乱顺序
+        # Shuffle order
         random.shuffle(all_cases)
 
-        # 统计
+        # Statistics
         stats = defaultdict(int)
         for case in all_cases:
             stats[case['subtype']] += 1
