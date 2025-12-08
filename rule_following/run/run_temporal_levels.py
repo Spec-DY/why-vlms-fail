@@ -3,17 +3,18 @@ Run Temporal Levels Tests
 Unified script to run any combination of Level 1-6 tests
 """
 
-from src.model_client import DummyModelClient, NovitaModelClient, DashScopeModelClient, XAIModelClient
 from src.temporal_levels import (
     TemporalLevel1, TemporalLevel2, TemporalLevel3,
     TemporalLevel4, TemporalLevel5, TemporalLevel6
 )
+from src.model_client import DummyModelClient, NovitaModelClient, DashScopeModelClient, XAIModelClient, SiliconFlowModelClient, GoogleModelClient
 import sys
 import argparse
 import os
 import json
 from datetime import datetime
 from typing import List, Dict, Any
+
 sys.path.append('.')
 
 
@@ -22,13 +23,13 @@ LEVEL_CONFIG = {
     1: {
         "name": "Basic Movement Rules",
         "class": TemporalLevel1,
-        "default_cases": 60,
+        "default_cases": 100,
         "description": "Tests basic movement patterns for all 6 piece types"
     },
     2: {
         "name": "Path Blocked Capture",
         "class": TemporalLevel2,
-        "default_cases": 90,
+        "default_cases": 100,
         "description": "Tests capture with path blocking (Rook/Bishop/Queen)"
     },
     3: {
@@ -75,6 +76,12 @@ def get_model_client(model_type: str, use_dummy: bool = False, dummy_pass_rate: 
     elif model_type == 'xai':
         print("\n🤖 Using XAI Model Client")
         return XAIModelClient()
+    elif model_type == 'sf':
+        print("\n🤖 Using SiliconFlow Model Client")
+        return SiliconFlowModelClient()
+    elif model_type == 'google':
+        print("\n🤖 Using Google Model Client")
+        return GoogleModelClient()
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -85,7 +92,8 @@ def run_single_level(level: int,
                      model_client=None,
                      output_base: str = "./output",
                      rate_limit_requests: int = 0,
-                     rate_limit_pause: int = 0) -> Dict[str, Any]:
+                     rate_limit_pause: int = 0,
+                     mode: str = "predictive") -> Dict[str, Any]:
     """
     Run a single level test
     """
@@ -98,6 +106,7 @@ def run_single_level(level: int,
     print("\n" + "=" * 70)
     print(f"LEVEL {level}: {config['name']}")
     print(f"Description: {config['description']}")
+    print(f"Mode: {mode}")
     print(f"Test cases: {n_cases}")
     print("=" * 70)
 
@@ -109,7 +118,8 @@ def run_single_level(level: int,
         seed=seed,
         auto_timestamp=True,
         rate_limit_requests=rate_limit_requests,
-        rate_limit_pause=rate_limit_pause
+        rate_limit_pause=rate_limit_pause,
+        mode=mode
     )
 
     # Generate test cases
@@ -134,7 +144,7 @@ def run_single_level(level: int,
     }
 
 
-def save_suite_summary(all_results: List[Dict[str, Any]], output_base: str):
+def save_suite_summary(all_results: List[Dict[str, Any]], output_base: str, mode: str):
     """
     Save a summary of all levels to a JSON file
     """
@@ -144,6 +154,7 @@ def save_suite_summary(all_results: List[Dict[str, Any]], output_base: str):
     summary_data = {
         "timestamp": datetime.now().isoformat(),
         "model_name": all_results[0]["model_name"] if all_results else "unknown",
+        "mode": mode,
         "levels_run": len(all_results),
         "results": []
     }
@@ -174,7 +185,7 @@ def save_suite_summary(all_results: List[Dict[str, Any]], output_base: str):
             "accuracy_given_verified": round(accuracy_verified, 3),
             "overall_accuracy": round(overall_accuracy, 3),
             "output_dir": res["output_dir"],
-            "details": stats  # Include full raw stats
+            "details": stats
         }
         summary_data["results"].append(level_summary)
 
@@ -187,7 +198,7 @@ def save_suite_summary(all_results: List[Dict[str, Any]], output_base: str):
         print(f"  Output: {res['output_dir']}")
 
     # Save to file
-    filename = f"temporal_levels_summary_{timestamp}.json"
+    filename = f"temporal_levels_summary_{mode}_{timestamp}.json"
     filepath = os.path.join(output_base, filename)
 
     try:
@@ -209,25 +220,28 @@ def run_multiple_levels(levels: List[int],
                         dummy_pass_rate: float = 0.8,
                         output_base: str = "./output",
                         rate_limit_requests: int = 0,
-                        rate_limit_pause: int = 0) -> List[Dict[str, Any]]:
+                        rate_limit_pause: int = 0,
+                        mode: str = "predictive") -> List[Dict[str, Any]]:
     """
     Run multiple level tests
     """
     # Validate levels
+    levels_to_run = levels.copy()
     for level in levels:
         if level not in LEVEL_CONFIG:
             print(
                 f"⚠️  Warning: Level {level} not implemented yet, skipping...")
-            levels.remove(level)
+            levels_to_run.remove(level)
 
-    if not levels:
+    if not levels_to_run:
         print("❌ No valid levels to run!")
         return []
 
     print("\n" + "=" * 70)
     print("TEMPORAL LEVELS TEST SUITE")
     print("=" * 70)
-    print(f"Levels to run: {levels}")
+    print(f"Levels to run: {levels_to_run}")
+    print(f"Mode: {mode}")
     print(f"Random seed: {seed}")
     print(f"Output directory: {output_base}")
     if rate_limit_requests > 0:
@@ -240,7 +254,7 @@ def run_multiple_levels(levels: List[int],
 
     # Run each level
     all_results = []
-    for level in levels:
+    for level in levels_to_run:
         try:
             result = run_single_level(
                 level=level,
@@ -249,7 +263,8 @@ def run_multiple_levels(levels: List[int],
                 model_client=model_client,
                 output_base=output_base,
                 rate_limit_requests=rate_limit_requests,
-                rate_limit_pause=rate_limit_pause
+                rate_limit_pause=rate_limit_pause,
+                mode=mode
             )
             all_results.append(result)
         except Exception as e:
@@ -259,7 +274,7 @@ def run_multiple_levels(levels: List[int],
             continue
 
     # Save summary to file and print
-    save_suite_summary(all_results, output_base)
+    save_suite_summary(all_results, output_base, mode)
 
     return all_results
 
@@ -287,6 +302,9 @@ Examples:
 
   # Run with rate limiting
   python run/run_temporal_levels.py --all --rate-limit 20 --rate-pause 5
+
+  # Run with explicit mode
+  python run/run_temporal_levels.py --all --mode explicit
         """
     )
 
@@ -324,11 +342,20 @@ Examples:
         help="Output directory (default: ./output)"
     )
 
+    # Mode selection
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["predictive", "explicit"],
+        default="predictive",
+        help="Test mode: predictive (default) or explicit"
+    )
+
     # Model selection
     parser.add_argument(
         "-m", "--model",
         type=str,
-        choices=["dummy", "novita", "dashscope", "xai"],
+        choices=["dummy", "novita", "dashscope", "xai", "sf", "google"],
         default="dummy",
         help="Model type to use (default: dummy)"
     )
@@ -371,7 +398,8 @@ Examples:
         dummy_pass_rate=args.dummy_pass_rate,
         output_base=args.output,
         rate_limit_requests=args.rate_limit,
-        rate_limit_pause=args.rate_pause
+        rate_limit_pause=args.rate_pause,
+        mode=args.mode
     )
 
 

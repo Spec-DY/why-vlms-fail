@@ -3,6 +3,7 @@ test_novita_api.py
 test_api.py
 .vscode/
 *.pyc
+qwen*/
 
 
 

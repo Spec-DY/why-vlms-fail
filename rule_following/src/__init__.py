@@ -10,6 +10,8 @@ from .model_client import (
     NovitaModelClient,
     DashScopeModelClient,
     XAIModelClient,
+    SiliconFlowModelClient,
+    GoogleModelClient
 )
 
 __all__ = [
@@ -22,4 +24,6 @@ __all__ = [
     "NovitaModelClient",
     "DashScopeModelClient",
     "XAIModelClient",
+    "SiliconFlowModelClient",
+    "GoogleModelClient"
 ]

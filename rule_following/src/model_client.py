@@ -225,6 +225,26 @@ class XAIModelClient(OpenAICompatibleModelClient):
     SERVICE_NAME = "XAI"
 
 
+class SiliconFlowModelClient(OpenAICompatibleModelClient):
+    """SiliconFlow model client"""
+
+    DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
+    ENV_API_KEY = "SILICONFLOW_API_KEY"
+    ENV_BASE_URL = "SILICONFLOW_BASE_URL"
+    ENV_MODEL = "SILICONFLOW_MODEL"
+    SERVICE_NAME = "SiliconFlow"
+
+
+class GoogleModelClient(OpenAICompatibleModelClient):
+    """Google Gemini (via OpenAI-compatible endpoint) model client"""
+
+    DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    ENV_API_KEY = "GOOGLE_API_KEY"
+    ENV_BASE_URL = "GOOGLE_BASE_URL"
+    ENV_MODEL = "GOOGLE_MODEL"
+    SERVICE_NAME = "Google"
+
+
 class DummyModelClient(ModelClient):
     """Dummy model client for testing the framework"""
 
