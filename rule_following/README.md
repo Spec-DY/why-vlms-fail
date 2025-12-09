@@ -185,13 +185,13 @@ python run/run_temporal_levels.py --all --model xai
 | :---------------------- | :---- | :----------- | :------------- | :------------------------------------------------------------------------------------------------------- |
 | **`--levels`**          | `-l`  | `int` (list) | `None`         | Specific level numbers to run (e.g., `-l 1 2 3`). Mutually exclusive with `--all`.                       |
 | **`--all`**             |       | `flag`       | `False`        | Run all available levels (currently 1-4). Mutually exclusive with `--levels`.                            |
-| **`--model`**           | `-m`  | `str`        | `"dummy"`      | Model client to use. Options: `dummy`, `novita`, `dashscope`, `xai`, `sf`, `google`.                     |
+| **`--model`**           | `-m`  | `str`        | `dummy`      | Model client to use. Options: `dummy`, `novita`, `dashscope`, `xai`, `sf`, `google`.                     |
 | **`--n-cases`**         | `-n`  | `int`        | `None`         | Number of test cases to generate per level. If not set, uses the level's default (usually 60-100).       |
 | **`--seed`**            | `-s`  | `int`        | `42`           | Random seed for reproducibility of test case generation.                                                 |
 | **`--output`**          | `-o`  | `str`        | `"./output"`   | Base directory for saving output results.                                                                |
 | **`--dummy-pass-rate`** |       | `float`      | `0.8`          | **Only for `dummy` model.** Probability (0.0-1.0) that the dummy model passes the verification question. |
 | **`--rate-limit`**      |       | `int`        | `0`            | Number of requests to process before pausing. `0` means no limit.                                        |
 | **`--rate-pause`**      |       | `int`        | `0`            | Duration in seconds to pause when the rate limit is reached.                                             |
-| **`--mode`**            |       | `str`        | `"predictive"` | Choose between `predictive` or `explicit`.                                                               |
+| **`--mode`**            |       | `str`        | `predictive` | Choose between `predictive` or `explicit`.                                                               |
 
 ---
