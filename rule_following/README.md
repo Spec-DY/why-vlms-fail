@@ -9,49 +9,30 @@ This project systematically tests VLMs through generated chess board images to e
 - **Spatial Reasoning**: Board position recognition, relative directions, diagonal relationships, etc.
 - **Rule Understanding**: Chess rules application (piece movements, en passant, castling, etc.)
 - **Temporal Reasoning**: Tracking piece movement sequences and understanding state changes
-- **Condition Ladder**: Testing model accuracy with slowly increasing constraints
+- **Rule Complexity Ladder**: Testing model accuracy with increasing constraints
 
 Each test includes a **verification mechanism** to ensure the model can correctly recognize the board before testing its reasoning abilities.
 
 ## ✨ Key Features
 
-### 🎯 Four Test Suites
+### 🎯 Test Suites
+#### Diagnostic Matrix
 
-**1. Spatial Test 0 - Pure Spatial Reasoning**
+|                | **Rule Free**              | **Rule Based**              |
+|----------------|----------------------------|-----------------------------|
+| **Single State**  | Spatial Test 0  | Spatial Test 1  |
+| **Multi States** | Temporal Test 0 | Temporal Test 1 |
 
-- Tests fundamental spatial understanding (no chess knowledge required)
-- Includes: same file/rank detection, diagonal recognition, relative directions, path clearance
+---
+#### Rule Complexity Ladder
 
-**2. Spatial Test 1 - Rule Following Baseline**
+Six levels of increasing complexity from Level 1 to Level 6
 
-- Tests movement rules for all 6 piece types (King, Queen, Rook, Bishop, Knight, Pawn)
-- Includes: legal moves, blocked paths, castling rules (through check & in check)
+| Mode | Description |
+|------|-------------|
+| **Explicit** | Rules are explicitly provided in context; model must understand and apply them |
+| **Predictive** | Rules are not given; model must infer rules from examples |
 
-**3. Temporal Test 0 - Pure Temporal Reasoning**
-
-- Tests sequence understanding and state tracking
-- Includes: movement tracking, state comparison, sequence comprehension
-- Multi-frame image tests
-
-**4. Temporal Test 1 - Temporal Rule Following**
-
-- Tests complex time-dependent chess rules
-- Includes: En Passant, Castling with temporal constraints
-- Event recognition and rule application
-
-**5. Condition Ladder**
-
-- Tests model accuracy with increasing conditions that must be checked
-
-### 🔌 Multi-Model Support
-
-Supports any OpenAI-compatible API:
-
-- **DashScope**
-- **Novita AI**
-- **XAI**
-- **Custom endpoints** (easily extensible)
-- **Dummy Model** (for testing the framework)
 
 ## 🚀 Quick Start
 
@@ -60,11 +41,21 @@ Supports any OpenAI-compatible API:
 ```bash
 # Clone the repository
 git clone https://github.com/Spec-DY/why-vlms-fail.git
-cd rulefollow_test
+cd rule_following
 
 # Install in development mode
 pip install -e .
 ```
+
+### 🔌 Multi-Model Support
+
+Supports any OpenAI-compatible API
+Model support added:
+- **DashScope**
+- **Novita AI**
+- **XAI**
+- **Custom endpoints** (easily extensible)
+- **Dummy Model** (for testing the framework)
 
 ### Configuration
 
@@ -87,14 +78,17 @@ XAI_MODEL=grok-4-fast-reasoning
 XAI_BASE_URL=https://api.x.ai/v1
 ```
 
-### Example of Running Tests
+### Example of Running Diagnostic Matrix Tests
 
 ```bash
-# Run Spatial Test 0 (Pure Spatial Reasoning)
+# Run Spatial Test 0
 python run/run_spatial_test_0.py
 
-# Run Temporal Test 1 (Temporal Rule Following)
+# Run Temporal Test 1
 python run/run_temporal_test_1.py
+
+# Run Rule Complexity Ladder
+python run/run_temporal_levels.py -all -m novita
 ```
 
 ### Customizing Test Parameters in Temporal/Spatial Test 0 & 1
@@ -130,7 +124,7 @@ YOUR_API_KEY=your_key
 YOUR_MODEL=your_model_name
 ```
 
-## 🛠️ Advanced Usage
+## 🛠️ Advanced Usage in Diagnostic Matrix Tests
 
 ### Rate Limiting
 
@@ -153,13 +147,11 @@ for model_type in models:
     # Results auto-saved to separate directories
 ```
 
-# Condition Ladder
+## Rule Complexity Ladder
 
 ---
 
-## How to use the `run/run_temporal_levels.py`
-
-### 1\. Run Specific Levels
+#### 1\. Run Specific Levels
 
 If you only want to test specific levels (e.g., Level 1 and Level 4):
 
@@ -169,17 +161,9 @@ python run/run_temporal_levels.py -l 1 4 --model xai
 
 _(Note: Use `-l` followed by the level numbers separated by spaces)_
 
-### 2\. Run All Levels
-
-To run all available tests from Level 1 to Level 4 in one go:
-
-```bash
-python run/run_temporal_levels.py --all --model xai
-```
-
 ---
 
-## ⚙️ Common Arguments
+## ⚙️ Available Arguments
 
 | Argument                | Short | Type         | Default        | Description                                                                                              |
 | :---------------------- | :---- | :----------- | :------------- | :------------------------------------------------------------------------------------------------------- |
