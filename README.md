@@ -30,11 +30,11 @@ Evaluates how visual factors affect VLM perception accuracy:
 
 Evaluates spatial and temporal reasoning with chess rules:
 
-- **Spatial Test 0** - Pure spatial reasoning
-- **Spatial Test 1** - Chess movement rules for all piece types
-- **Temporal Test 0** - Sequence understanding & state tracking
-- **Temporal Test 1** - Time-dependent rules
-- **Condition Ladder** - Accuracy with increasing conditions
+- **Spatial Test 0** - Single State Rule Free
+- **Spatial Test 1** - Single State Rule Based
+- **Temporal Test 0** - Multi States Rule Free
+- **Temporal Test 1** - Mutil States Rule Based
+- **Temporal levels** - Rule Complexity Ladder
 
 👉 [View detailed documentation](./rule_following/README.md)
 
@@ -44,7 +44,7 @@ Evaluates spatial and temporal reasoning with chess rules:
 
 ```bash
 git clone https://github.com/Spec-DY/why-vlms-fail.git
-cd vlm_benchmark
+cd why-vlms-fail
 
 # Install rule_following module
 cd rule_following
@@ -58,7 +58,7 @@ cd ..
 ```
 
 ### Results
-Download from this [google drive link](https://drive.google.com/drive/folders/1jPYZdfO9Z5y_qtnBkqfkC3va7FG4dlNv?usp=sharing) to view our results. 
+Download from [Google Drive](https://drive.google.com/drive/folders/1jPYZdfO9Z5y_qtnBkqfkC3va7FG4dlNv?usp=sharing) to view our results. 
 
 ### Configuration
 
