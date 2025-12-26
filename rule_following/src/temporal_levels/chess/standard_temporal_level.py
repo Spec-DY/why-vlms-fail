@@ -1,29 +1,29 @@
-
 """
-Standard Temporal Level
-A generic class to handle any temporal level by injecting the specific generator.
+Chess Standard Temporal Level
+A generic class to handle any chess temporal level by injecting the specific generator.
 Supports two modes: 'predictive' (default) and 'explicit'
 """
 
 from typing import List, Dict, Type, Literal
-from .temporal_level_base import TemporalLevelBase
+from ..temporal_level_base import TemporalLevelBase
+from .verification_generator import ChessVerificationGenerator
+from .board_generator import ChessBoardGenerator
 
-# Predictive generators (default)
-from .level_1_generator import Level1Generator
-from .level_2_generator import Level2Generator
-from .level_3_generator import Level3Generator
-from .level_4_generator import Level4Generator
-from .level_5_generator import Level5Generator
-from .level_6_generator import Level6Generator
-
-# Explicit generators
-from .level_1_generator_explicit import Level1Generator as Level1GeneratorExplicit
-from .level_2_generator_explicit import Level2Generator as Level2GeneratorExplicit
-from .level_3_generator_explicit import Level3Generator as Level3GeneratorExplicit
-from .level_4_generator_explicit import Level4Generator as Level4GeneratorExplicit
-from .level_5_generator_explicit import Level5Generator as Level5GeneratorExplicit
-from .level_6_generator_explicit import Level6Generator as Level6GeneratorExplicit
-
+# Predictive generators
+from .generators import (
+    Level1Generator,
+    Level2Generator,
+    Level3Generator,
+    Level4Generator,
+    Level5Generator,
+    Level6Generator,
+    Level1GeneratorExplicit,
+    Level2GeneratorExplicit,
+    Level3GeneratorExplicit,
+    Level4GeneratorExplicit,
+    Level5GeneratorExplicit,
+    Level6GeneratorExplicit,
+)
 
 # Generator mapping
 _GENERATORS = {
@@ -50,7 +50,7 @@ Mode = Literal['predictive', 'explicit']
 
 class StandardTemporalLevel(TemporalLevelBase):
     """
-    A generic implementation for Temporal Levels.
+    A generic implementation for Chess Temporal Levels.
     Supports two modes: 'predictive' (default) and 'explicit'
     """
 
@@ -66,7 +66,7 @@ class StandardTemporalLevel(TemporalLevelBase):
                  rate_limit_pause: int = 0,
                  **generator_kwargs):
         """
-        Initialize Standard Temporal Level
+        Initialize Standard Temporal Level for Chess
 
         Args:
             level: Level number (1-6)
@@ -81,7 +81,7 @@ class StandardTemporalLevel(TemporalLevelBase):
             **generator_kwargs: Extra arguments for generator
         """
         if base_output_dir is None:
-            base_output_dir = f"./output/temporal_level_{level}"
+            base_output_dir = f"./output/chess_temporal_level_{level}"
 
         super().__init__(
             level=level,
@@ -107,10 +107,16 @@ class StandardTemporalLevel(TemporalLevelBase):
         self.mode = mode
         self.generator_kwargs = generator_kwargs
 
+        # Set Chess-specific board generator (required by base class)
+        self.board_gen = ChessBoardGenerator()
+
+        # Set Chess-specific verification generator (required by base class)
+        self.verification_gen = ChessVerificationGenerator()
+
     def generate_test_cases(self) -> List[Dict]:
         """Generate test cases using the selected generator class"""
         print(
-            f"\nGenerating Level {self.level} test cases (mode={self.mode}, n_cases={self.n_cases}, seed={self.seed})")
+            f"\nGenerating Chess Level {self.level} test cases (mode={self.mode}, n_cases={self.n_cases}, seed={self.seed})")
         print("=" * 60)
 
         generator = self.generator_class(
@@ -129,7 +135,7 @@ class StandardTemporalLevel(TemporalLevelBase):
 def _create_level_class(level: int):
     """Create backward-compatible level class with mode support"""
 
-    class _TemporalLevelN(StandardTemporalLevel):
+    class _ChessTemporalLevelN(StandardTemporalLevel):
         def __init__(self,
                      base_output_dir: str = None,
                      n_cases: int = 100,
@@ -149,14 +155,22 @@ def _create_level_class(level: int):
                 rate_limit_pause=rate_limit_pause
             )
 
-    _TemporalLevelN.__name__ = f"TemporalLevel{level}"
-    _TemporalLevelN.__qualname__ = f"TemporalLevel{level}"
-    return _TemporalLevelN
+    _ChessTemporalLevelN.__name__ = f"ChessTemporalLevel{level}"
+    _ChessTemporalLevelN.__qualname__ = f"ChessTemporalLevel{level}"
+    return _ChessTemporalLevelN
 
 
-TemporalLevel1 = _create_level_class(1)
-TemporalLevel2 = _create_level_class(2)
-TemporalLevel3 = _create_level_class(3)
-TemporalLevel4 = _create_level_class(4)
-TemporalLevel5 = _create_level_class(5)
-TemporalLevel6 = _create_level_class(6)
+ChessTemporalLevel1 = _create_level_class(1)
+ChessTemporalLevel2 = _create_level_class(2)
+ChessTemporalLevel3 = _create_level_class(3)
+ChessTemporalLevel4 = _create_level_class(4)
+ChessTemporalLevel5 = _create_level_class(5)
+ChessTemporalLevel6 = _create_level_class(6)
+
+# Legacy aliases for backward compatibility
+TemporalLevel1 = ChessTemporalLevel1
+TemporalLevel2 = ChessTemporalLevel2
+TemporalLevel3 = ChessTemporalLevel3
+TemporalLevel4 = ChessTemporalLevel4
+TemporalLevel5 = ChessTemporalLevel5
+TemporalLevel6 = ChessTemporalLevel6

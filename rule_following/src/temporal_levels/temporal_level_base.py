@@ -1,6 +1,7 @@
 """
 Base class for Temporal Level Tests
 Provides common functionality for test execution and verification
+This is a GAME-AGNOSTIC base class.
 """
 
 import os
@@ -9,13 +10,12 @@ from datetime import datetime
 from abc import ABC, abstractmethod
 from PIL import Image, ImageDraw, ImageFont
 from ..data_structures import TestResult, save_results, create_summary
-from ..board_generator import ChessBoardGenerator
-from .verification_generator import TemporalLevelVerificationGenerator
+# NOTE: Do NOT import board_generator here - each game provides its own
 import time
 
 
 class TemporalLevelBase(ABC):
-    """Abstract base class for temporal level tests"""
+    """Abstract base class for temporal level tests (game-agnostic)"""
 
     def __init__(self,
                  level: int,
@@ -49,13 +49,17 @@ class TemporalLevelBase(ABC):
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.board_gen = ChessBoardGenerator()
+        # Board generator - MUST be set by subclass
+        # Subclasses should set: self.board_gen = SomeBoardGenerator()
+        self.board_gen = None
+
         self.test_cases = []
         self.n_cases = n_cases
         self.seed = seed
 
-        # Add verification generator
-        self.verification_gen = TemporalLevelVerificationGenerator()
+        # Verification generator - MUST be set by subclass
+        # Subclasses should set: self.verification_gen = SomeVerificationGenerator()
+        self.verification_gen = None
 
     @abstractmethod
     def generate_test_cases(self) -> List[Dict]:
@@ -67,8 +71,32 @@ class TemporalLevelBase(ABC):
         """
         pass
 
+    def _get_verification_generator(self):
+        """
+        Get the verification generator.
+        Subclasses can override this or set self.verification_gen in __init__
+        """
+        if self.verification_gen is None:
+            raise NotImplementedError(
+                "Subclass must set self.verification_gen or override _get_verification_generator()"
+            )
+        return self.verification_gen
+
+    def _get_board_generator(self):
+        """
+        Get the board generator.
+        Subclasses must set self.board_gen in __init__
+        """
+        if self.board_gen is None:
+            raise NotImplementedError(
+                "Subclass must set self.board_gen in __init__"
+            )
+        return self.board_gen
+
     def create_test_images(self):
         """Generate images for all test cases with State labels"""
+        board_gen = self._get_board_generator()
+
         print(f"\nCreating test images for Level {self.level}...")
         print("=" * 60)
 
@@ -83,16 +111,16 @@ class TemporalLevelBase(ABC):
                 squares = state.get('squares', [])
 
                 if pieces:
-                    img = self.board_gen.create_board_with_pieces(
+                    img = board_gen.create_board_with_pieces(
                         pieces=pieces,
                         highlighted_squares=squares
                     )
                 else:
-                    img = self.board_gen.create_empty_board(
+                    img = board_gen.create_empty_board(
                         highlighted_squares=squares
                     )
 
-                # ✅ Add "State N" label to the image
+                # Add "State N" label to the image
                 img = self._add_state_label(img, state_idx + 1)
 
                 img_path = os.path.join(
@@ -114,7 +142,7 @@ class TemporalLevelBase(ABC):
         Add 'State N' label to the top of the image
 
         Args:
-            img: Original chess board image
+            img: Original board image
             state_num: State number (1, 2, 3, etc.)
 
         Returns:
@@ -139,7 +167,6 @@ class TemporalLevelBase(ABC):
                 font = ImageFont.truetype("Arial.ttf", 28)
             except:
                 try:
-                    # Try system fonts on different platforms
                     font = ImageFont.truetype(
                         "/System/Library/Fonts/Helvetica.ttc", 28)
                 except:
@@ -182,7 +209,7 @@ class TemporalLevelBase(ABC):
                 f"Image {i+1} shows State {i+1}" for i in range(num_states)]
             image_ref = ". ".join(image_refs) + "."
 
-        prompt = f"""Look at these chess board states carefully.
+        prompt = f"""Look at these board states carefully.
 
 {image_ref}
 
@@ -221,6 +248,8 @@ Main answer: [yes/no/unknown]"""
             'test_correct_given_verified': 0,
         }
 
+        verification_gen = self._get_verification_generator()
+
         print(f"{'=' * 60}")
         print(f"Running Temporal Level {self.level}")
         print("(Each case includes verification question + test question)")
@@ -242,7 +271,7 @@ Main answer: [yes/no/unknown]"""
                     response)
 
                 # Check verification
-                verification_passed = self.verification_gen.check_verification_answer(
+                verification_passed = verification_gen.check_verification_answer(
                     verification_response,
                     case
                 )

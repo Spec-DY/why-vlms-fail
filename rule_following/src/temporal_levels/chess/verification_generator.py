@@ -1,18 +1,18 @@
 """
-Generate verification questions for temporal level test cases
+Generate verification questions for chess temporal level test cases
 To ensure the model can correctly recognize each board state before testing
 """
 
 from typing import Dict, List
 
 
-class TemporalLevelVerificationGenerator:
-    """Generate verification questions for temporal level test cases"""
+class ChessVerificationGenerator:
+    """Generate verification questions for chess temporal level test cases"""
 
     @staticmethod
     def generate_verification(case: Dict) -> Dict:
         """
-        Generate a verification question for a temporal level test case
+        Generate a verification question for a chess temporal level test case
 
         Args:
             case: Test case dictionary with multiple states
@@ -30,13 +30,12 @@ class TemporalLevelVerificationGenerator:
             pieces = state.get('pieces', {})
             pieces_desc = []
             for sq, piece in pieces.items():
-                piece_name = TemporalLevelVerificationGenerator._piece_name(
-                    piece)
+                piece_name = ChessVerificationGenerator._piece_name(piece)
                 pieces_desc.append(f"{piece_name} at {sq}")
                 # Add position and piece type to keywords
                 all_keywords.append(sq)
                 all_keywords.append(
-                    TemporalLevelVerificationGenerator._get_piece_type(piece))
+                    ChessVerificationGenerator._get_piece_type(piece))
 
             state_text = ", ".join(
                 pieces_desc) if pieces_desc else "Empty board"
@@ -128,3 +127,7 @@ class TemporalLevelVerificationGenerator:
                 return False
 
         return True
+
+
+# Legacy alias for backward compatibility
+TemporalLevelVerificationGenerator = ChessVerificationGenerator
